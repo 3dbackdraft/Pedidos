@@ -9,7 +9,9 @@
   - Usá la URL que termina en /exec en app.js
 */
 
-const SPREADSHEET_ID = '1tdoH27uxutOiy1FOhPS7KOnF49XRIoYLwf01hx4boi8';
+// IMPORTANTE: este ID debe ser el de TU Google Sheet, no el del Apps Script.
+// De la URL https://docs.google.com/spreadsheets/d/ID_DE_LA_HOJA/edit
+const SPREADSHEET_ID = '1keP-JZV0c8p_3_-pzGpU4ifJ0u1WvY00GOQDRY-YL2U';
 const SHEET_NAME = 'BASE PEDIDOS';
 const HEADERS = ['ID', 'Fecha carga', 'Pedido', 'Cliente', 'Precio', 'Seña', 'Estado', 'Fecha compromiso', 'Nota', 'Actualizado'];
 
@@ -40,7 +42,9 @@ function doGet(e) {
   let result;
 
   try {
-    if (action === 'list') {
+    if (action === 'diagnostico') {
+      result = diagnostico_();
+    } else if (action === 'list') {
       result = { ok: true, data: readOrders_() };
     } else if (action === 'save') {
       const order = decodePayload_(params.payload);
@@ -89,6 +93,36 @@ function ensureSheet_() {
   if (firstRow[0] !== 'ID') {
     sh.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
   }
+}
+
+function diagnostico_() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  let sh = ss.getSheetByName(SHEET_NAME);
+  if (!sh) sh = ss.insertSheet(SHEET_NAME);
+  ensureSheet_();
+  return {
+    ok: true,
+    spreadsheetName: ss.getName(),
+    spreadsheetId: ss.getId(),
+    sheetName: sh.getName(),
+    lastRow: sh.getLastRow(),
+    headers: sh.getRange(1, 1, 1, HEADERS.length).getValues()[0]
+  };
+}
+
+function probarGuardado() {
+  ensureSheet_();
+  saveOrder_({
+    id: 'TEST-' + new Date().getTime(),
+    fechaCarga: new Date(),
+    pedido: 'Prueba de conexión',
+    cliente: 'Apps Script',
+    precio: '',
+    sena: '',
+    estado: 'Para hacer',
+    fechaCompromiso: '',
+    nota: 'Si esta fila aparece, la conexión funciona.'
+  });
 }
 
 function readOrders_() {

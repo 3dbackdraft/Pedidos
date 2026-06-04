@@ -7,38 +7,38 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <header class="hero">
-    <div class="brand-mark" aria-hidden="true">
-      <span class="flame">🔥</span>
-      <span class="cube">3D</span>
+  <header class="topbar">
+    <div class="brand">
+      <img src="logo-3d-backdraft.png" alt="3D Backdraft" />
+      <div>
+        <strong>Pedidos</strong>
+        <span>3D Backdraft</span>
+      </div>
     </div>
-    <div class="hero-text">
-      <p class="eyebrow">3D Backdraft</p>
-      <h1>Pedidos</h1>
-      <p class="subtitle">Hacer → entregar → cobrar → registro.</p>
+    <div class="top-actions">
+      <button id="newOrderBtn" class="primary compact">+ Nuevo</button>
+      <button id="syncBtn" class="icon-btn" title="Actualizar">↻</button>
     </div>
-    <button id="syncBtn" class="icon-btn" title="Actualizar">↻</button>
   </header>
 
   <main>
-    <section class="actions">
-      <button id="newOrderBtn" class="primary">+ Nuevo pedido</button>
-      <input id="searchInput" type="search" placeholder="Buscar pedido, cliente o nota..." />
+    <section class="toolbar">
+      <input id="searchInput" type="search" placeholder="Buscar producto, cliente o nota..." />
     </section>
 
     <nav class="tabs" aria-label="Estados de pedidos">
-      <button class="tab active" data-filter="Para hacer"><span>🖨️</span> Para hacer</button>
-      <button class="tab" data-filter="Para entregar"><span>🚗</span> Para entregar</button>
-      <button class="tab" data-filter="Para cobrar"><span>💵</span> Para cobrar</button>
-      <button class="tab" data-filter="Deudor"><span>⚠️</span> Deudores</button>
-      <button class="tab" data-filter="Todos"><span>📋</span> Todos activos</button>
+      <button class="tab active" data-filter="Para hacer"><span>🖨️</span><b>Para hacer</b></button>
+      <button class="tab" data-filter="Para entregar"><span>🚗</span><b>Para entregar</b></button>
+      <button class="tab" data-filter="Para cobrar"><span>💵</span><b>Para cobrar</b></button>
+      <button class="tab" data-filter="Deudor"><span>⚠️</span><b>Deudores</b></button>
+      <button class="tab" data-filter="Todos"><span>📋</span><b>Activos</b></button>
     </nav>
 
     <section id="statusMsg" class="status-msg"></section>
     <section id="ordersList" class="orders-list"></section>
 
     <section class="summary-wrap" aria-label="Resumen de pedidos">
-      <h2>Recuento general</h2>
+      <h2>Recuento</h2>
       <section class="summary" id="summary"></section>
     </section>
   </main>
@@ -56,12 +56,12 @@
       <input type="hidden" id="orderId" />
 
       <label>
-        Pedido *
+        Producto / pedido *
         <textarea id="pedido" rows="3" placeholder="Ej: 10 llaveros bomberos + nombres" required></textarea>
       </label>
 
       <label>
-        Cliente / Para
+        Para quién
         <input id="cliente" type="text" placeholder="Opcional" />
       </label>
 
@@ -98,7 +98,7 @@
         <textarea id="nota" rows="2" placeholder="Color, entrega, medidas, link de referencia, etc."></textarea>
       </label>
 
-      <button class="primary full" type="submit">Guardar pedido</button>
+      <button class="primary full" type="submit">Guardar en Sheet</button>
     </form>
   </dialog>
 

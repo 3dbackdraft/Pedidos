@@ -3,7 +3,7 @@
   Esta URL ya es tu implementación /exec.
   La app escribe en Google Sheets usando JSONP para evitar bloqueos CORS desde GitHub Pages.
 */
-const API_URL = "https://script.google.com/macros/s/AKfycbytucDlKJBH5x0BvMfLrZB5RcAUgDvdGSlLwetRBmqRorEQ8Dbur2zdJCMmR8VE4uWQRw/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbwarihXFVj4G8bIU1kGeBOXxtJTyDHgr6wIZ8Rqzzqykl2mA1bzZiKSS4d_jbM-zvH9_A/exec";
 
 const DEFAULT_STATUS = "Para hacer";
 const ACTIVE_STATUSES = ["Para hacer", "Para entregar", "Para cobrar", "Deudor"];
@@ -52,6 +52,10 @@ function api(action, payload = {}) {
 
   if (action === "list") {
     return jsonp(`${API_URL}?action=list`);
+  }
+
+  if (action === "diagnostico") {
+    return jsonp(`${API_URL}?action=diagnostico`);
   }
 
   if (action === "save") {
@@ -120,13 +124,16 @@ function localApi(action, payload) {
 
 async function loadOrders() {
   statusMsg.textContent = "Actualizando pedidos...";
+  statusMsg.className = "status-msg";
   try {
     const result = await api("list");
     orders = (result.data || []).map(o => ({ ...o, estado: normalizedStatus(o.estado) }));
     render();
-    statusMsg.textContent = API_URL ? "Conectado a Google Sheets. Los cambios quedan registrados en la hoja." : "Modo prueba local: pegá tu URL de Apps Script en app.js.";
+    statusMsg.textContent = API_URL ? "Conectado a Google Sheets · los cambios se guardan en BASE PEDIDOS." : "Modo prueba local: pegá tu URL de Apps Script en app.js.";
+    statusMsg.className = "status-msg ok";
   } catch (err) {
     statusMsg.textContent = err.message;
+    statusMsg.className = "status-msg error";
   }
 }
 
@@ -198,7 +205,7 @@ function orderCard(o) {
         ${o.nota ? `<p class="note">${escapeHTML(o.nota)}</p>` : `<p class="note muted-note">Sin observaciones cargadas.</p>`}
         <div class="card-actions">
           ${actions}
-          <button onclick="editOrder('${o.id}')">Editar detalle</button>
+          <button onclick="editOrder('${o.id}')">✏️ Editar</button>
         </div>
       </div>
     </details>
@@ -207,16 +214,16 @@ function orderCard(o) {
 
 function actionButtons(id, estado) {
   if (estado === "Para hacer") {
-    return `<button class="quick" onclick="quickStatus('${id}', 'Para entregar')">🚗 Pasar a entregar</button>`;
+    return `<button class="quick" onclick="quickStatus('${id}', 'Para entregar')">🚗 Listo para entregar</button>`;
   }
   if (estado === "Para entregar") {
-    return `<button class="quick" onclick="quickStatus('${id}', 'Para cobrar')">💵 Pasar a cobrar</button>`;
+    return `<button class="quick" onclick="quickStatus('${id}', 'Para cobrar')">💵 Entregado · pasar a cobrar</button>`;
   }
   if (estado === "Para cobrar") {
-    return `<button class="quick" onclick="quickStatus('${id}', 'Finalizado')">✅ Cobrado / finalizar</button><button onclick="quickStatus('${id}', 'Deudor')">⚠️ Pasar a deudores</button>`;
+    return `<button class="quick" onclick="quickStatus('${id}', 'Finalizado')">✅ Cobrado · finalizar</button><button onclick="quickStatus('${id}', 'Deudor')">⚠️ Quedó debiendo</button>`;
   }
   if (estado === "Deudor") {
-    return `<button class="quick" onclick="quickStatus('${id}', 'Finalizado')">✅ Pago recibido / finalizar</button>`;
+    return `<button class="quick" onclick="quickStatus('${id}', 'Finalizado')">✅ Pago recibido · finalizar</button>`;
   }
   return "";
 }
@@ -250,6 +257,8 @@ window.quickStatus = async function(id, estado) {
   render();
   try {
     await api("updateStatus", { id, estado });
+    statusMsg.textContent = "Estado actualizado y registrado en Google Sheets.";
+    statusMsg.className = "status-msg ok";
     await loadOrders();
   } catch (err) {
     orders = previous;
@@ -280,6 +289,8 @@ form.addEventListener("submit", async (e) => {
   try {
     await api("save", { order });
     dialog.close();
+    statusMsg.textContent = "Pedido guardado en Google Sheets.";
+    statusMsg.className = "status-msg ok";
     await loadOrders();
     currentFilter = HIDDEN_STATUSES.includes(order.estado) ? "Para hacer" : order.estado;
     document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.filter === currentFilter));

@@ -1,14 +1,8 @@
 # Organizador de pedidos · 3D Backdraft
 
-Frontend simple para cargar y gestionar pedidos conectado a Google Sheets por Apps Script.
+App simple para manejar pedidos desde celular o computadora, conectada a Google Sheets con Apps Script.
 
-## URL de Apps Script cargada
-
-```txt
-https://script.google.com/macros/s/AKfycbytucDlKJBH5x0BvMfLrZB5RcAUgDvdGSlLwetRBmqRorEQ8Dbur2zdJCMmR8VE4uWQRw/exec
-```
-
-## Flujo
+## Flujo activo
 
 - Para hacer
 - Para entregar
@@ -16,19 +10,51 @@ https://script.google.com/macros/s/AKfycbytucDlKJBH5x0BvMfLrZB5RcAUgDvdGSlLwetRB
 - Deudor
 - Finalizado
 
-Los pedidos con estado **Finalizado** no se muestran en la app, pero quedan guardados en la hoja `BASE PEDIDOS`.
+Los pedidos en estado **Finalizado** no se muestran en la app, pero quedan guardados como registro en la hoja `BASE PEDIDOS`.
 
-## Instalación
+## URL de Apps Script cargada en `app.js`
 
-1. Subir estos archivos al repo de GitHub.
-2. Activar GitHub Pages desde `Settings > Pages`.
-3. En Google Apps Script, usar el archivo `apps-script.gs` como referencia.
-4. La pestaña de Google Sheets debe llamarse exactamente `BASE PEDIDOS`.
-5. Si se cambia el Apps Script, crear una nueva versión de implementación.
+```txt
+https://script.google.com/macros/s/AKfycbwarihXFVj4G8bIU1kGeBOXxtJTyDHgr6wIZ8Rqzzqykl2mA1bzZiKSS4d_jbM-zvH9_A/exec
+```
 
-## Archivos
+## Muy importante si no guarda en Sheet
 
-- `index.html`: estructura de la app.
-- `styles.css`: estética responsive 3D Backdraft.
-- `app.js`: lógica y conexión con Google Sheets.
-- `apps-script.gs`: backend para pegar en Apps Script.
+En `apps-script.gs`, revisá esta línea:
+
+```js
+const SPREADSHEET_ID = '1keP-JZV0c8p_3_-pzGpU4ifJ0u1WvY00GOQDRY-YL2U';
+```
+
+Ese ID debe ser el de la **hoja de cálculo**, no el del Apps Script.
+Sale de esta parte de la URL:
+
+```txt
+https://docs.google.com/spreadsheets/d/ESTE_ES_EL_ID/edit
+```
+
+La pestaña debe llamarse exactamente:
+
+```txt
+BASE PEDIDOS
+```
+
+## Pasos para actualizar Apps Script
+
+1. Copiar todo `apps-script.gs` y pegarlo en `Code.gs`.
+2. Guardar.
+3. Ejecutar `setup()`.
+4. Ejecutar `probarGuardado()`.
+5. Revisar que aparezca una fila de prueba en el Sheet.
+6. Ir a **Implementar > Administrar implementaciones > Editar > Nueva versión**.
+7. Mantener acceso como **Cualquier persona** y ejecución como **Yo**.
+
+## Prueba rápida
+
+Abrí esta URL en el navegador:
+
+```txt
+https://script.google.com/macros/s/AKfycbwarihXFVj4G8bIU1kGeBOXxtJTyDHgr6wIZ8Rqzzqykl2mA1bzZiKSS4d_jbM-zvH9_A/exec?action=diagnostico
+```
+
+Tiene que devolver un JSON con `ok: true`, nombre del archivo, nombre de hoja y cantidad de filas.
