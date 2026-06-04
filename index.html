@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>3D Backdraft · Pedidos</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">3D Backdraft</p>
+      <h1>Organizador de pedidos</h1>
+    </div>
+    <button id="syncBtn" class="icon-btn" title="Actualizar">↻</button>
+  </header>
+
+  <main>
+    <section class="summary" id="summary"></section>
+
+    <section class="actions">
+      <button id="newOrderBtn" class="primary">+ Nuevo pedido</button>
+      <input id="searchInput" type="search" placeholder="Buscar pedido o cliente..." />
+    </section>
+
+    <nav class="tabs" aria-label="Estados de pedidos">
+      <button class="tab active" data-filter="Para hacer">Para hacer</button>
+      <button class="tab" data-filter="Hecho">Para entregar</button>
+      <button class="tab" data-filter="Espera de pago">Espera pago</button>
+      <button class="tab" data-filter="Deudor">Deudores</button>
+      <button class="tab" data-filter="Todos">Todos</button>
+    </nav>
+
+    <section id="statusMsg" class="status-msg"></section>
+    <section id="ordersList" class="orders-list"></section>
+  </main>
+
+  <dialog id="orderDialog">
+    <form id="orderForm" method="dialog" class="form-card">
+      <div class="dialog-head">
+        <h2 id="dialogTitle">Nuevo pedido</h2>
+        <button type="button" id="closeDialogBtn" class="ghost">×</button>
+      </div>
+
+      <input type="hidden" id="orderId" />
+
+      <label>
+        Pedido *
+        <textarea id="pedido" rows="3" placeholder="Ej: 10 llaveros bomberos + nombres" required></textarea>
+      </label>
+
+      <label>
+        Cliente / Para
+        <input id="cliente" type="text" placeholder="Opcional" />
+      </label>
+
+      <div class="grid-2">
+        <label>
+          Precio
+          <input id="precio" type="number" min="0" step="1" placeholder="Opcional" />
+        </label>
+
+        <label>
+          Seña / pagado
+          <input id="sena" type="number" min="0" step="1" placeholder="Opcional" />
+        </label>
+      </div>
+
+      <label>
+        Fecha compromiso
+        <input id="fechaCompromiso" type="date" />
+      </label>
+
+      <label>
+        Estado
+        <select id="estado">
+          <option>Para hacer</option>
+          <option>Hecho</option>
+          <option>Entregado</option>
+          <option>Espera de pago</option>
+          <option>Deudor</option>
+        </select>
+      </label>
+
+      <label>
+        Nota
+        <textarea id="nota" rows="2" placeholder="Color, entrega, medidas, link de referencia, etc."></textarea>
+      </label>
+
+      <button class="primary full" type="submit">Guardar pedido</button>
+    </form>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>
