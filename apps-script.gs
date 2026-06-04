@@ -1,13 +1,12 @@
 /*
-  Apps Script para conectar la web con Google Sheets.
+  Apps Script para conectar la web con Google Sheets - 3D Backdraft Pedidos.
 
-  Pasos:
-  1) En tu Google Sheet: Extensiones > Apps Script.
-  2) Pegá este código.
-  3) Cambiá SPREADSHEET_ID por el ID de tu planilla.
-  4) Implementar > Nueva implementación > Aplicación web.
-  5) Ejecutar como: tú misma. Acceso: cualquier usuario con el enlace.
-  6) Copiá la URL /exec y pegala en app.js, constante API_URL.
+  IMPORTANTE:
+  - La hoja debe llamarse: BASE PEDIDOS
+  - Pegá este archivo completo en Code.gs
+  - Ejecutá setup() una vez para crear/acomodar encabezados
+  - Implementar > Administrar implementaciones > Editar > Nueva versión
+  - Usá la URL que termina en /exec en app.js
 */
 
 const SPREADSHEET_ID = '1tdoH27uxutOiy1FOhPS7KOnF49XRIoYLwf01hx4boi8';
@@ -18,44 +17,78 @@ function setup() {
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
   let sh = ss.getSheetByName(SHEET_NAME);
   if (!sh) sh = ss.insertSheet(SHEET_NAME);
-  sh.clear();
-  sh.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
-  sh.getRange(1, 1, 1, HEADERS.length).setFontWeight('bold').setBackground('#00f022').setFontColor('#000000');
+
+  const lastRow = sh.getLastRow();
+  if (lastRow === 0) {
+    sh.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
+  } else {
+    sh.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
+  }
+
+  sh.getRange(1, 1, 1, HEADERS.length)
+    .setFontWeight('bold')
+    .setBackground('#00f022')
+    .setFontColor('#000000');
   sh.setFrozenRows(1);
   sh.autoResizeColumns(1, HEADERS.length);
 }
 
 function doGet(e) {
   ensureSheet_();
-  return json_({ ok: true, data: readOrders_() });
+  const params = e && e.parameter ? e.parameter : {};
+  const action = params.action || 'list';
+  let result;
+
+  try {
+    if (action === 'list') {
+      result = { ok: true, data: readOrders_() };
+    } else if (action === 'save') {
+      const order = decodePayload_(params.payload);
+      saveOrder_(order);
+      result = { ok: true, data: order };
+    } else if (action === 'updateStatus') {
+      updateStatus_(params.id, params.estado);
+      result = { ok: true };
+    } else {
+      result = { ok: false, error: 'Acción no reconocida' };
+    }
+  } catch (err) {
+    result = { ok: false, error: err.message || String(err) };
+  }
+
+  return output_(result, params.callback);
 }
 
 function doPost(e) {
   ensureSheet_();
-  const body = JSON.parse(e.postData.contents || '{}');
+  try {
+    const body = JSON.parse(e.postData.contents || '{}');
 
-  if (body.action === 'save') {
-    saveOrder_(body.order);
-    return json_({ ok: true });
+    if (body.action === 'save') {
+      saveOrder_(body.order);
+      return json_({ ok: true, data: body.order });
+    }
+
+    if (body.action === 'updateStatus') {
+      updateStatus_(body.id, body.estado);
+      return json_({ ok: true });
+    }
+
+    return json_({ ok: false, error: 'Acción no reconocida' });
+  } catch (err) {
+    return json_({ ok: false, error: err.message || String(err) });
   }
-
-  if (body.action === 'updateStatus') {
-    updateStatus_(body.id, body.estado);
-    return json_({ ok: true });
-  }
-
-  return json_({ ok: false, error: 'Acción no reconocida' });
 }
 
 function ensureSheet_() {
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
   let sh = ss.getSheetByName(SHEET_NAME);
-  if (!sh) {
-    sh = ss.insertSheet(SHEET_NAME);
+  if (!sh) sh = ss.insertSheet(SHEET_NAME);
+
+  const firstRow = sh.getRange(1, 1, 1, HEADERS.length).getValues()[0];
+  if (firstRow[0] !== 'ID') {
     sh.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
   }
-  const firstRow = sh.getRange(1, 1, 1, HEADERS.length).getValues()[0];
-  if (firstRow[0] !== 'ID') sh.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
 }
 
 function readOrders_() {
@@ -71,14 +104,15 @@ function readOrders_() {
     cliente: r[3],
     precio: r[4],
     sena: r[5],
-    estado: r[6] || 'Para hacer',
+    estado: normalizeStatus_(r[6] || 'Para hacer'),
     fechaCompromiso: formatDate_(r[7]),
     nota: r[8],
-    actualizado: r[9]
+    actualizado: formatDateTime_(r[9])
   }));
 }
 
 function saveOrder_(order) {
+  if (!order || !order.id) throw new Error('Pedido inválido: falta ID');
   const sh = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
   const row = findRowById_(sh, order.id);
   const values = [[
@@ -88,7 +122,7 @@ function saveOrder_(order) {
     order.cliente || '',
     order.precio || '',
     order.sena || '',
-    order.estado || 'Para hacer',
+    normalizeStatus_(order.estado || 'Para hacer'),
     order.fechaCompromiso || '',
     order.nota || '',
     new Date()
@@ -99,10 +133,11 @@ function saveOrder_(order) {
 }
 
 function updateStatus_(id, estado) {
+  if (!id) throw new Error('Falta ID del pedido');
   const sh = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
   const row = findRowById_(sh, id);
-  if (!row) throw new Error('Pedido no encontrado');
-  sh.getRange(row, 7).setValue(estado);
+  if (!row) throw new Error('Pedido no encontrado en la hoja');
+  sh.getRange(row, 7).setValue(normalizeStatus_(estado));
   sh.getRange(row, 10).setValue(new Date());
 }
 
@@ -114,12 +149,42 @@ function findRowById_(sh, id) {
   return index >= 0 ? index + 2 : null;
 }
 
+function normalizeStatus_(status) {
+  if (status === 'Hecho' || status === 'Entregado') return 'Para entregar';
+  if (status === 'Espera de pago') return 'Para cobrar';
+  return status || 'Para hacer';
+}
+
+function decodePayload_(payload) {
+  if (!payload) throw new Error('Falta payload');
+  const json = Utilities.newBlob(Utilities.base64DecodeWebSafe(payload)).getDataAsString('UTF-8');
+  return JSON.parse(json);
+}
+
 function formatDate_(value) {
   if (!value) return '';
   if (Object.prototype.toString.call(value) === '[object Date]') {
     return Utilities.formatDate(value, Session.getScriptTimeZone(), 'yyyy-MM-dd');
   }
   return value;
+}
+
+function formatDateTime_(value) {
+  if (!value) return '';
+  if (Object.prototype.toString.call(value) === '[object Date]') {
+    return Utilities.formatDate(value, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm');
+  }
+  return value;
+}
+
+function output_(obj, callback) {
+  if (callback) {
+    const safeCallback = String(callback).replace(/[^a-zA-Z0-9_.$]/g, '');
+    return ContentService
+      .createTextOutput(`${safeCallback}(${JSON.stringify(obj)});`)
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+  return json_(obj);
 }
 
 function json_(obj) {

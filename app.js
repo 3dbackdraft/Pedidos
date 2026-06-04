@@ -1,12 +1,13 @@
 /*
   CONFIGURACIÓN
-  1) Pegá acá la URL de tu Apps Script terminado en /exec.
-  2) Si queda vacío, la app funciona en modo prueba con localStorage.
+  Esta URL ya es tu implementación /exec.
+  La app escribe en Google Sheets usando JSONP para evitar bloqueos CORS desde GitHub Pages.
 */
-const API_URL = "https://script.google.com/macros/s/AKfycbxo2sr9yn75hlKcfXbPQtLargXs_DsoXwdCkihJuNt8Crw-hcKYx0uV2skem-lvrzJ7zg/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbytucDlKJBH5x0BvMfLrZB5RcAUgDvdGSlLwetRBmqRorEQ8Dbur2zdJCMmR8VE4uWQRw/exec";
 
 const DEFAULT_STATUS = "Para hacer";
-const STATUSES = ["Para hacer", "Para entregar", "Espera de pago", "Deudor", "Entregado"];
+const ACTIVE_STATUSES = ["Para hacer", "Para entregar", "Para cobrar", "Deudor"];
+const HIDDEN_STATUSES = ["Finalizado"];
 
 let orders = [];
 let currentFilter = "Para hacer";
@@ -32,17 +33,70 @@ function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
-async function api(action, payload = {}) {
+function normalizedStatus(status) {
+  if (status === "Hecho" || status === "Entregado") return "Para entregar";
+  if (status === "Espera de pago") return "Para cobrar";
+  return status || DEFAULT_STATUS;
+}
+
+function base64UrlEncodeUnicode(obj) {
+  const json = JSON.stringify(obj);
+  const bytes = new TextEncoder().encode(json);
+  let binary = "";
+  bytes.forEach((b) => binary += String.fromCharCode(b));
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function api(action, payload = {}) {
   if (!API_URL) return localApi(action, payload);
 
-  const options = action === "list"
-    ? {}
-    : { method: "POST", body: JSON.stringify({ action, ...payload }) };
+  if (action === "list") {
+    return jsonp(`${API_URL}?action=list`);
+  }
 
-  const url = action === "list" ? `${API_URL}?action=list` : API_URL;
-  const res = await fetch(url, options);
-  if (!res.ok) throw new Error("No se pudo conectar con Google Sheets");
-  return res.json();
+  if (action === "save") {
+    const encoded = base64UrlEncodeUnicode(payload.order);
+    return jsonp(`${API_URL}?action=save&payload=${encodeURIComponent(encoded)}`);
+  }
+
+  if (action === "updateStatus") {
+    const qs = new URLSearchParams({ action: "updateStatus", id: payload.id, estado: payload.estado });
+    return jsonp(`${API_URL}?${qs.toString()}`);
+  }
+
+  return Promise.reject(new Error("Acción no reconocida"));
+}
+
+function jsonp(url) {
+  return new Promise((resolve, reject) => {
+    const callbackName = "cb_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+    const sep = url.includes("?") ? "&" : "?";
+    const script = document.createElement("script");
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error("No respondió Google Sheets. Revisá la implementación /exec y permisos."));
+    }, 15000);
+
+    function cleanup() {
+      clearTimeout(timer);
+      delete window[callbackName];
+      script.remove();
+    }
+
+    window[callbackName] = (data) => {
+      cleanup();
+      if (!data || data.ok === false) reject(new Error(data?.error || "Error al guardar en Google Sheets"));
+      else resolve(data);
+    };
+
+    script.onerror = () => {
+      cleanup();
+      reject(new Error("No se pudo conectar con Google Sheets"));
+    };
+
+    script.src = `${url}${sep}callback=${callbackName}`;
+    document.body.appendChild(script);
+  });
 }
 
 function localApi(action, payload) {
@@ -68,26 +122,31 @@ async function loadOrders() {
   statusMsg.textContent = "Actualizando pedidos...";
   try {
     const result = await api("list");
-    orders = result.data || [];
+    orders = (result.data || []).map(o => ({ ...o, estado: normalizedStatus(o.estado) }));
     render();
-    statusMsg.textContent = API_URL ? "Conectado a Google Sheets." : "Modo prueba local: pegá tu URL de Apps Script en app.js para conectar la planilla.";
+    statusMsg.textContent = API_URL ? "Conectado a Google Sheets. Los cambios quedan registrados en la hoja." : "Modo prueba local: pegá tu URL de Apps Script en app.js.";
   } catch (err) {
     statusMsg.textContent = err.message;
   }
 }
 
+function activeOrders() {
+  return orders.filter(o => !HIDDEN_STATUSES.includes(normalizedStatus(o.estado)));
+}
+
 function renderSummary() {
+  const active = activeOrders();
   const counts = {
-    "Para hacer": orders.filter(o => normalizedStatus(o.estado) === "Para hacer").length,
-    "Para entregar": orders.filter(o => normalizedStatus(o.estado) === "Para entregar").length,
-    "Espera de pago": orders.filter(o => normalizedStatus(o.estado) === "Espera de pago").length,
-    "Deudor": orders.filter(o => normalizedStatus(o.estado) === "Deudor").length,
+    "Para hacer": active.filter(o => normalizedStatus(o.estado) === "Para hacer").length,
+    "Para entregar": active.filter(o => normalizedStatus(o.estado) === "Para entregar").length,
+    "Para cobrar": active.filter(o => normalizedStatus(o.estado) === "Para cobrar").length,
+    "Deudor": active.filter(o => normalizedStatus(o.estado) === "Deudor").length,
   };
 
   $("summary").innerHTML = `
     <div class="summary-card"><div class="summary-icon">🖨️</div><strong>${counts["Para hacer"]}</strong><span>Para hacer</span></div>
     <div class="summary-card"><div class="summary-icon">🚗</div><strong>${counts["Para entregar"]}</strong><span>Para entregar</span></div>
-    <div class="summary-card"><div class="summary-icon">💵</div><strong>${counts["Espera de pago"]}</strong><span>Espera pago</span></div>
+    <div class="summary-card"><div class="summary-icon">💵</div><strong>${counts["Para cobrar"]}</strong><span>Para cobrar</span></div>
     <div class="summary-card"><div class="summary-icon">⚠️</div><strong>${counts["Deudor"]}</strong><span>Deudores</span></div>
   `;
 }
@@ -95,7 +154,7 @@ function renderSummary() {
 function render() {
   renderSummary();
   const q = $("searchInput").value.toLowerCase().trim();
-  let data = [...orders];
+  let data = activeOrders();
 
   if (currentFilter !== "Todos") data = data.filter(o => normalizedStatus(o.estado) === currentFilter);
   if (q) data = data.filter(o => `${o.pedido} ${o.cliente} ${o.nota}`.toLowerCase().includes(q));
@@ -103,23 +162,18 @@ function render() {
   data.sort((a, b) => (a.fechaCompromiso || "9999-12-31").localeCompare(b.fechaCompromiso || "9999-12-31"));
 
   if (!data.length) {
-    list.innerHTML = `<div class="empty">No hay pedidos en esta vista.</div>`;
+    list.innerHTML = `<div class="empty">No hay pedidos activos en esta vista.</div>`;
     return;
   }
 
   list.innerHTML = data.map(orderCard).join("");
 }
 
-function normalizedStatus(status) {
-  if (status === "Hecho") return "Para entregar";
-  return status || DEFAULT_STATUS;
-}
-
 function orderCard(o) {
   const estado = normalizedStatus(o.estado);
   const debe = Number(o.precio || 0) - Number(o.sena || 0);
-  const css = estado === "Deudor" ? "deudor" : estado === "Espera de pago" ? "espera" : estado === "Para entregar" ? "para-entregar" : estado === "Entregado" ? "entregado" : "para-hacer";
-  const icon = estado === "Deudor" ? "⚠️" : estado === "Espera de pago" ? "💵" : estado === "Para entregar" ? "🚗" : estado === "Entregado" ? "✅" : "🖨️";
+  const css = estado === "Deudor" ? "deudor" : estado === "Para cobrar" ? "espera" : estado === "Para entregar" ? "para-entregar" : "para-hacer";
+  const icon = estado === "Deudor" ? "⚠️" : estado === "Para cobrar" ? "💵" : estado === "Para entregar" ? "🚗" : "🖨️";
   const actions = actionButtons(o.id, estado);
 
   return `
@@ -156,15 +210,15 @@ function actionButtons(id, estado) {
     return `<button class="quick" onclick="quickStatus('${id}', 'Para entregar')">🚗 Pasar a entregar</button>`;
   }
   if (estado === "Para entregar") {
-    return `<button class="quick" onclick="quickStatus('${id}', 'Espera de pago')">💵 Espera de pago</button>`;
+    return `<button class="quick" onclick="quickStatus('${id}', 'Para cobrar')">💵 Pasar a cobrar</button>`;
   }
-  if (estado === "Espera de pago") {
-    return `<button class="quick" onclick="quickStatus('${id}', 'Deudor')">⚠️ Marcar deudor</button><button onclick="quickStatus('${id}', 'Entregado')">✅ Cerrar</button>`;
+  if (estado === "Para cobrar") {
+    return `<button class="quick" onclick="quickStatus('${id}', 'Finalizado')">✅ Cobrado / finalizar</button><button onclick="quickStatus('${id}', 'Deudor')">⚠️ Pasar a deudores</button>`;
   }
   if (estado === "Deudor") {
-    return `<button class="quick" onclick="quickStatus('${id}', 'Entregado')">✅ Pago recibido / cerrar</button>`;
+    return `<button class="quick" onclick="quickStatus('${id}', 'Finalizado')">✅ Pago recibido / finalizar</button>`;
   }
-  return `<button onclick="quickStatus('${id}', 'Para hacer')">Reabrir</button>`;
+  return "";
 }
 
 function escapeHTML(str) {
@@ -196,6 +250,7 @@ window.quickStatus = async function(id, estado) {
   render();
   try {
     await api("updateStatus", { id, estado });
+    await loadOrders();
   } catch (err) {
     orders = previous;
     render();
@@ -226,7 +281,7 @@ form.addEventListener("submit", async (e) => {
     await api("save", { order });
     dialog.close();
     await loadOrders();
-    currentFilter = order.estado;
+    currentFilter = HIDDEN_STATUSES.includes(order.estado) ? "Para hacer" : order.estado;
     document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.filter === currentFilter));
     render();
   } catch (err) {

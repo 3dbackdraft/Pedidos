@@ -15,7 +15,7 @@
     <div class="hero-text">
       <p class="eyebrow">3D Backdraft</p>
       <h1>Pedidos</h1>
-      <p class="subtitle">Organizador simple para producción, entrega y pagos.</p>
+      <p class="subtitle">Hacer → entregar → cobrar → registro.</p>
     </div>
     <button id="syncBtn" class="icon-btn" title="Actualizar">↻</button>
   </header>
@@ -29,9 +29,9 @@
     <nav class="tabs" aria-label="Estados de pedidos">
       <button class="tab active" data-filter="Para hacer"><span>🖨️</span> Para hacer</button>
       <button class="tab" data-filter="Para entregar"><span>🚗</span> Para entregar</button>
-      <button class="tab" data-filter="Espera de pago"><span>💵</span> Espera pago</button>
+      <button class="tab" data-filter="Para cobrar"><span>💵</span> Para cobrar</button>
       <button class="tab" data-filter="Deudor"><span>⚠️</span> Deudores</button>
-      <button class="tab" data-filter="Todos"><span>📋</span> Todos</button>
+      <button class="tab" data-filter="Todos"><span>📋</span> Todos activos</button>
     </nav>
 
     <section id="statusMsg" class="status-msg"></section>
@@ -87,9 +87,9 @@
         <select id="estado">
           <option>Para hacer</option>
           <option>Para entregar</option>
-          <option>Espera de pago</option>
+          <option>Para cobrar</option>
           <option>Deudor</option>
-          <option>Entregado</option>
+          <option>Finalizado</option>
         </select>
       </label>
 
