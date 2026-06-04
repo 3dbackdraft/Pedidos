@@ -6,7 +6,7 @@
 const API_URL = "https://script.google.com/macros/s/AKfycbxo2sr9yn75hlKcfXbPQtLargXs_DsoXwdCkihJuNt8Crw-hcKYx0uV2skem-lvrzJ7zg/exec";
 
 const DEFAULT_STATUS = "Para hacer";
-const STATUSES = ["Para hacer", "Hecho", "Entregado", "Espera de pago", "Deudor"];
+const STATUSES = ["Para hacer", "Para entregar", "Espera de pago", "Deudor", "Entregado"];
 
 let orders = [];
 let currentFilter = "Para hacer";
@@ -78,15 +78,15 @@ async function loadOrders() {
 
 function renderSummary() {
   const counts = {
-    "Para hacer": orders.filter(o => o.estado === "Para hacer").length,
-    "Hecho": orders.filter(o => o.estado === "Hecho").length,
-    "Espera de pago": orders.filter(o => o.estado === "Espera de pago").length,
-    "Deudor": orders.filter(o => o.estado === "Deudor").length,
+    "Para hacer": orders.filter(o => normalizedStatus(o.estado) === "Para hacer").length,
+    "Para entregar": orders.filter(o => normalizedStatus(o.estado) === "Para entregar").length,
+    "Espera de pago": orders.filter(o => normalizedStatus(o.estado) === "Espera de pago").length,
+    "Deudor": orders.filter(o => normalizedStatus(o.estado) === "Deudor").length,
   };
 
   $("summary").innerHTML = `
     <div class="summary-card"><div class="summary-icon">🖨️</div><strong>${counts["Para hacer"]}</strong><span>Para hacer</span></div>
-    <div class="summary-card"><div class="summary-icon">🚗</div><strong>${counts["Hecho"]}</strong><span>Para entregar</span></div>
+    <div class="summary-card"><div class="summary-icon">🚗</div><strong>${counts["Para entregar"]}</strong><span>Para entregar</span></div>
     <div class="summary-card"><div class="summary-icon">💵</div><strong>${counts["Espera de pago"]}</strong><span>Espera pago</span></div>
     <div class="summary-card"><div class="summary-icon">⚠️</div><strong>${counts["Deudor"]}</strong><span>Deudores</span></div>
   `;
@@ -97,7 +97,7 @@ function render() {
   const q = $("searchInput").value.toLowerCase().trim();
   let data = [...orders];
 
-  if (currentFilter !== "Todos") data = data.filter(o => o.estado === currentFilter);
+  if (currentFilter !== "Todos") data = data.filter(o => normalizedStatus(o.estado) === currentFilter);
   if (q) data = data.filter(o => `${o.pedido} ${o.cliente} ${o.nota}`.toLowerCase().includes(q));
 
   data.sort((a, b) => (a.fechaCompromiso || "9999-12-31").localeCompare(b.fechaCompromiso || "9999-12-31"));
@@ -110,38 +110,61 @@ function render() {
   list.innerHTML = data.map(orderCard).join("");
 }
 
+function normalizedStatus(status) {
+  if (status === "Hecho") return "Para entregar";
+  return status || DEFAULT_STATUS;
+}
+
 function orderCard(o) {
+  const estado = normalizedStatus(o.estado);
   const debe = Number(o.precio || 0) - Number(o.sena || 0);
-  const css = o.estado === "Deudor" ? "deudor" : o.estado === "Espera de pago" ? "espera" : o.estado === "Hecho" ? "hecho" : o.estado === "Entregado" ? "entregado" : "";
-  const icon = o.estado === "Deudor" ? "⚠️" : o.estado === "Espera de pago" ? "💵" : o.estado === "Hecho" ? "🚗" : o.estado === "Entregado" ? "✅" : "🖨️";
-  const nextButton = o.estado === "Para hacer"
-    ? `<button class="quick" onclick="quickStatus('${o.id}', 'Hecho')">Marcar hecho</button>`
-    : o.estado === "Hecho"
-      ? `<button class="quick" onclick="quickStatus('${o.id}', 'Entregado')">Marcar entregado</button>`
-      : `<button onclick="quickStatus('${o.id}', 'Para hacer')">Volver a hacer</button>`;
+  const css = estado === "Deudor" ? "deudor" : estado === "Espera de pago" ? "espera" : estado === "Para entregar" ? "para-entregar" : estado === "Entregado" ? "entregado" : "para-hacer";
+  const icon = estado === "Deudor" ? "⚠️" : estado === "Espera de pago" ? "💵" : estado === "Para entregar" ? "🚗" : estado === "Entregado" ? "✅" : "🖨️";
+  const actions = actionButtons(o.id, estado);
 
   return `
-    <article class="order-card ${css}" data-icon="${icon}">
-      <div class="order-head">
-        <h3 class="order-title">${escapeHTML(o.pedido)}</h3>
-        <span class="badge">${escapeHTML(o.estado || DEFAULT_STATUS)}</span>
+    <details class="order-card ${css}" data-icon="${icon}">
+      <summary class="card-summary">
+        <div class="mini-icon" aria-hidden="true">${icon}</div>
+        <div class="summary-main">
+          <h3 class="order-title">${escapeHTML(o.pedido || "Pedido sin nombre")}</h3>
+          <p class="client-line">Para: ${escapeHTML(o.cliente || "sin cliente")}</p>
+        </div>
+        <span class="badge">${escapeHTML(estado)}</span>
+      </summary>
+
+      <div class="card-detail">
+        <div class="meta">
+          <span>Precio: ${money(o.precio)}</span>
+          ${o.sena ? `<span>Seña/pagado: ${money(o.sena)}</span>` : ""}
+          ${o.precio ? `<span>Debe: ${money(Math.max(debe, 0))}</span>` : ""}
+          ${o.fechaCompromiso ? `<span>Entrega: ${escapeHTML(o.fechaCompromiso)}</span>` : ""}
+          ${o.fechaCarga ? `<span>Cargado: ${escapeHTML(o.fechaCarga)}</span>` : ""}
+        </div>
+        ${o.nota ? `<p class="note">${escapeHTML(o.nota)}</p>` : `<p class="note muted-note">Sin observaciones cargadas.</p>`}
+        <div class="card-actions">
+          ${actions}
+          <button onclick="editOrder('${o.id}')">Editar detalle</button>
+        </div>
       </div>
-      <div class="meta">
-        <span>Para: ${escapeHTML(o.cliente || "sin cliente")}</span>
-        <span>${money(o.precio)}</span>
-        ${o.sena ? `<span>Seña: ${money(o.sena)}</span>` : ""}
-        ${o.precio ? `<span>Debe: ${money(Math.max(debe, 0))}</span>` : ""}
-        ${o.fechaCompromiso ? `<span>Entrega: ${escapeHTML(o.fechaCompromiso)}</span>` : ""}
-      </div>
-      ${o.nota ? `<p class="note">${escapeHTML(o.nota)}</p>` : ""}
-      <div class="card-actions">
-        ${nextButton}
-        <button onclick="editOrder('${o.id}')">Editar</button>
-        <button onclick="quickStatus('${o.id}', 'Espera de pago')">Espera pago</button>
-        <button onclick="quickStatus('${o.id}', 'Deudor')">Deudor</button>
-      </div>
-    </article>
+    </details>
   `;
+}
+
+function actionButtons(id, estado) {
+  if (estado === "Para hacer") {
+    return `<button class="quick" onclick="quickStatus('${id}', 'Para entregar')">🚗 Pasar a entregar</button>`;
+  }
+  if (estado === "Para entregar") {
+    return `<button class="quick" onclick="quickStatus('${id}', 'Espera de pago')">💵 Espera de pago</button>`;
+  }
+  if (estado === "Espera de pago") {
+    return `<button class="quick" onclick="quickStatus('${id}', 'Deudor')">⚠️ Marcar deudor</button><button onclick="quickStatus('${id}', 'Entregado')">✅ Cerrar</button>`;
+  }
+  if (estado === "Deudor") {
+    return `<button class="quick" onclick="quickStatus('${id}', 'Entregado')">✅ Pago recibido / cerrar</button>`;
+  }
+  return `<button onclick="quickStatus('${id}', 'Para hacer')">Reabrir</button>`;
 }
 
 function escapeHTML(str) {
@@ -157,7 +180,7 @@ function openForm(order = null) {
   $("precio").value = order?.precio || "";
   $("sena").value = order?.sena || "";
   $("fechaCompromiso").value = order?.fechaCompromiso || "";
-  $("estado").value = order?.estado || DEFAULT_STATUS;
+  $("estado").value = normalizedStatus(order?.estado) || DEFAULT_STATUS;
   $("nota").value = order?.nota || "";
   dialog.showModal();
 }
