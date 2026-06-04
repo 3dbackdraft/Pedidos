@@ -7,38 +7,49 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <header class="topbar">
-    <div>
+  <header class="hero">
+    <div class="brand-mark" aria-hidden="true">
+      <span class="flame">🔥</span>
+      <span class="cube">3D</span>
+    </div>
+    <div class="hero-text">
       <p class="eyebrow">3D Backdraft</p>
-      <h1>Organizador de pedidos</h1>
+      <h1>Pedidos</h1>
+      <p class="subtitle">Organizador simple para producción, entrega y pagos.</p>
     </div>
     <button id="syncBtn" class="icon-btn" title="Actualizar">↻</button>
   </header>
 
   <main>
-    <section class="summary" id="summary"></section>
-
     <section class="actions">
       <button id="newOrderBtn" class="primary">+ Nuevo pedido</button>
-      <input id="searchInput" type="search" placeholder="Buscar pedido o cliente..." />
+      <input id="searchInput" type="search" placeholder="Buscar pedido, cliente o nota..." />
     </section>
 
     <nav class="tabs" aria-label="Estados de pedidos">
-      <button class="tab active" data-filter="Para hacer">Para hacer</button>
-      <button class="tab" data-filter="Hecho">Para entregar</button>
-      <button class="tab" data-filter="Espera de pago">Espera pago</button>
-      <button class="tab" data-filter="Deudor">Deudores</button>
-      <button class="tab" data-filter="Todos">Todos</button>
+      <button class="tab active" data-filter="Para hacer"><span>🖨️</span> Para hacer</button>
+      <button class="tab" data-filter="Hecho"><span>🚗</span> Para entregar</button>
+      <button class="tab" data-filter="Espera de pago"><span>💵</span> Espera pago</button>
+      <button class="tab" data-filter="Deudor"><span>⚠️</span> Deudores</button>
+      <button class="tab" data-filter="Todos"><span>📋</span> Todos</button>
     </nav>
 
     <section id="statusMsg" class="status-msg"></section>
     <section id="ordersList" class="orders-list"></section>
+
+    <section class="summary-wrap" aria-label="Resumen de pedidos">
+      <h2>Recuento general</h2>
+      <section class="summary" id="summary"></section>
+    </section>
   </main>
 
   <dialog id="orderDialog">
     <form id="orderForm" method="dialog" class="form-card">
       <div class="dialog-head">
-        <h2 id="dialogTitle">Nuevo pedido</h2>
+        <div>
+          <p class="eyebrow mini">Carga rápida</p>
+          <h2 id="dialogTitle">Nuevo pedido</h2>
+        </div>
         <button type="button" id="closeDialogBtn" class="ghost">×</button>
       </div>
 

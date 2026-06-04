@@ -85,10 +85,10 @@ function renderSummary() {
   };
 
   $("summary").innerHTML = `
-    <div class="summary-card"><strong>${counts["Para hacer"]}</strong><span>Para hacer</span></div>
-    <div class="summary-card"><strong>${counts["Hecho"]}</strong><span>Para entregar</span></div>
-    <div class="summary-card"><strong>${counts["Espera de pago"]}</strong><span>Espera pago</span></div>
-    <div class="summary-card"><strong>${counts["Deudor"]}</strong><span>Deudores</span></div>
+    <div class="summary-card"><div class="summary-icon">🖨️</div><strong>${counts["Para hacer"]}</strong><span>Para hacer</span></div>
+    <div class="summary-card"><div class="summary-icon">🚗</div><strong>${counts["Hecho"]}</strong><span>Para entregar</span></div>
+    <div class="summary-card"><div class="summary-icon">💵</div><strong>${counts["Espera de pago"]}</strong><span>Espera pago</span></div>
+    <div class="summary-card"><div class="summary-icon">⚠️</div><strong>${counts["Deudor"]}</strong><span>Deudores</span></div>
   `;
 }
 
@@ -112,7 +112,8 @@ function render() {
 
 function orderCard(o) {
   const debe = Number(o.precio || 0) - Number(o.sena || 0);
-  const css = o.estado === "Deudor" ? "deudor" : o.estado === "Espera de pago" ? "espera" : o.estado === "Hecho" ? "hecho" : "";
+  const css = o.estado === "Deudor" ? "deudor" : o.estado === "Espera de pago" ? "espera" : o.estado === "Hecho" ? "hecho" : o.estado === "Entregado" ? "entregado" : "";
+  const icon = o.estado === "Deudor" ? "⚠️" : o.estado === "Espera de pago" ? "💵" : o.estado === "Hecho" ? "🚗" : o.estado === "Entregado" ? "✅" : "🖨️";
   const nextButton = o.estado === "Para hacer"
     ? `<button class="quick" onclick="quickStatus('${o.id}', 'Hecho')">Marcar hecho</button>`
     : o.estado === "Hecho"
@@ -120,7 +121,7 @@ function orderCard(o) {
       : `<button onclick="quickStatus('${o.id}', 'Para hacer')">Volver a hacer</button>`;
 
   return `
-    <article class="order-card ${css}">
+    <article class="order-card ${css}" data-icon="${icon}">
       <div class="order-head">
         <h3 class="order-title">${escapeHTML(o.pedido)}</h3>
         <span class="badge">${escapeHTML(o.estado || DEFAULT_STATUS)}</span>
