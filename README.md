@@ -15,7 +15,7 @@ Los pedidos en estado **Finalizado** no se muestran en la app, pero quedan guard
 ## URL de Apps Script cargada en `app.js`
 
 ```txt
-https://script.google.com/macros/s/AKfycbxnPPbndxPLtbWwyVW20oJtuVR85f-QJdX7ADLB10UZ_zcPL75qla7x53KdGvu0aqCmjg/exec
+https://script.google.com/macros/s/AKfycbwGlarDJWfz6LrxvqLVPDBvbroJ9PADBXWspqnE_VFAJXcPZI5bVWt6Z1TTqjcDecc/exec
 ```
 
 ## Muy importante si no guarda en Sheet
@@ -54,7 +54,7 @@ BASE PEDIDOS
 Abrí esta URL en el navegador:
 
 ```txt
-https://script.google.com/macros/s/AKfycbxnPPbndxPLtbWwyVW20oJtuVR85f-QJdX7ADLB10UZ_zcPL75qla7x53KdGvu0aqCmjg/exec?action=diagnostico
+https://script.google.com/macros/s/AKfycbwGlarDJWfz6LrxvqLVPDBvbroJ9PADBXWspqnE_VFAJXcPZI5bVWt6Z1TTqjcDecc/exec?action=diagnostico
 ```
 
 Tiene que devolver un JSON con `ok: true`, nombre del archivo, nombre de hoja y cantidad de filas.
