@@ -3,7 +3,7 @@
   Esta URL ya es tu implementación /exec.
   La app escribe en Google Sheets usando JSONP para evitar bloqueos CORS desde GitHub Pages.
 */
-const API_URL = "https://script.google.com/macros/s/AKfycbwarihXFVj4G8bIU1kGeBOXxtJTyDHgr6wIZ8Rqzzqykl2mA1bzZiKSS4d_jbM-zvH9_A/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbxnPPbndxPLtbWwyVW20oJtuVR85f-QJdX7ADLB10UZ_zcPL75qla7x53KdGvu0aqCmjg/exec";
 
 const DEFAULT_STATUS = "Para hacer";
 const ACTIVE_STATUSES = ["Para hacer", "Para entregar", "Para cobrar", "Deudor"];
