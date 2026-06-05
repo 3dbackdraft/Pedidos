@@ -23,12 +23,7 @@ function uid() {
 }
 
 function money(value) {
-
-  if (
-    value === "" ||
-    value === null ||
-    value === undefined
-  ) {
+  if (value === "" || value === null || value === undefined) {
     return "Sin precio";
   }
 
@@ -38,15 +33,11 @@ function money(value) {
     return "Sin precio";
   }
 
-  return n.toLocaleString(
-    "es-AR",
-    {
-      style: "currency",
-      currency: "ARS",
-      maximumFractionDigits: 0
-    }
-  );
-
+  return n.toLocaleString("es-AR", {
+    style: "currency",
+    currency: "ARS",
+    maximumFractionDigits: 0
+  });
 }
 
 function todayISO() {
@@ -54,11 +45,7 @@ function todayISO() {
 }
 
 function normalizedStatus(status) {
-
-  if (
-    status === "Hecho" ||
-    status === "Entregado"
-  ) {
+  if (status === "Hecho" || status === "Entregado") {
     return "Para entregar";
   }
 
@@ -67,13 +54,10 @@ function normalizedStatus(status) {
   }
 
   return status || DEFAULT_STATUS;
-
 }
 
 function base64UrlEncodeUnicode(obj) {
-
   const json = JSON.stringify(obj);
-
   const bytes = new TextEncoder().encode(json);
 
   let binary = "";
@@ -86,213 +70,140 @@ function base64UrlEncodeUnicode(obj) {
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/g, "");
-
 }
 
 function api(action, payload = {}) {
-
   if (action === "list") {
     return jsonp(`${API_URL}?action=list`);
   }
 
+  if (action === "diagnostico") {
+    return jsonp(`${API_URL}?action=diagnostico`);
+  }
+
   if (action === "save") {
-
-    const encoded =
-      base64UrlEncodeUnicode(payload.order);
-
-    return jsonp(
-      `${API_URL}?action=save&payload=${encodeURIComponent(encoded)}`
-    );
-
+    const encoded = base64UrlEncodeUnicode(payload.order);
+    return jsonp(`${API_URL}?action=save&payload=${encodeURIComponent(encoded)}`);
   }
 
   if (action === "updateStatus") {
-
     const qs = new URLSearchParams({
       action: "updateStatus",
       id: payload.id,
       estado: payload.estado
     });
 
-    return jsonp(
-      `${API_URL}?${qs.toString()}`
-    );
-
+    return jsonp(`${API_URL}?${qs.toString()}`);
   }
 
-  return Promise.reject(
-    new Error("Acción no reconocida")
-  );
-
+  return Promise.reject(new Error("Acción no reconocida"));
 }
 
 function jsonp(url) {
-
   return new Promise((resolve, reject) => {
-
     const callbackName =
       "cb_" +
       Date.now() +
       "_" +
-      Math.random()
-        .toString(36)
-        .slice(2);
+      Math.random().toString(36).slice(2);
 
-    const sep =
-      url.includes("?")
-        ? "&"
-        : "?";
-
-    const script =
-      document.createElement("script");
+    const sep = url.includes("?") ? "&" : "?";
+    const script = document.createElement("script");
 
     const timer = setTimeout(() => {
-
       cleanup();
-
       reject(
         new Error(
           "No respondió Google Sheets. Revisá la implementación /exec y permisos."
         )
       );
-
     }, 15000);
 
     function cleanup() {
-
       clearTimeout(timer);
-
       delete window[callbackName];
-
       script.remove();
-
     }
 
     window[callbackName] = (data) => {
-
       cleanup();
 
-      if (
-        !data ||
-        data.ok === false
-      ) {
-
+      if (!data || data.ok === false) {
         reject(
           new Error(
             data?.error ||
             "Error al guardar en Google Sheets"
           )
         );
-
       } else {
-
         resolve(data);
-
       }
-
     };
 
     script.onerror = () => {
-
       cleanup();
-
-      reject(
-        new Error(
-          "No se pudo conectar con Google Sheets"
-        )
-      );
-
+      reject(new Error("No se pudo conectar con Google Sheets"));
     };
 
-    script.src =
-      `${url}${sep}callback=${callbackName}`;
-
+    script.src = `${url}${sep}callback=${callbackName}`;
     document.body.appendChild(script);
-
   });
-
 }
 
 async function loadOrders() {
-
-  statusMsg.textContent =
-    "Actualizando pedidos...";
-
-  statusMsg.className =
-    "status-msg";
+  statusMsg.textContent = "Actualizando pedidos...";
+  statusMsg.className = "status-msg";
 
   try {
+    const result = await api("list");
 
-    const result =
-      await api("list");
-
-    orders =
-      (result.data || []).map(o => ({
-        ...o,
-        estado: normalizedStatus(o.estado)
-      }));
+    orders = (result.data || []).map((o) => ({
+      ...o,
+      estado: normalizedStatus(o.estado)
+    }));
 
     render();
 
     statusMsg.textContent =
       "Conectado a Google Sheets · los cambios se guardan en BASE PEDIDOS.";
 
-    statusMsg.className =
-      "status-msg ok";
-
+    statusMsg.className = "status-msg ok";
   } catch (err) {
-
-    statusMsg.textContent =
-      err.message;
-
-    statusMsg.className =
-      "status-msg error";
-
+    statusMsg.textContent = err.message;
+    statusMsg.className = "status-msg error";
   }
-
 }
 
 function activeOrders() {
-
-  return orders.filter(o =>
+  return orders.filter((o) =>
     !HIDDEN_STATUSES.includes(
       normalizedStatus(o.estado)
     )
   );
-
 }
 
 function renderSummary() {
-
-  const active =
-    activeOrders();
+  const active = activeOrders();
 
   const counts = {
+    "Para hacer": active.filter((o) =>
+      normalizedStatus(o.estado) === "Para hacer"
+    ).length,
 
-    "Para hacer":
-      active.filter(o =>
-        normalizedStatus(o.estado) === "Para hacer"
-      ).length,
+    "Para entregar": active.filter((o) =>
+      normalizedStatus(o.estado) === "Para entregar"
+    ).length,
 
-    "Para entregar":
-      active.filter(o =>
-        normalizedStatus(o.estado) === "Para entregar"
-      ).length,
+    "Para cobrar": active.filter((o) =>
+      normalizedStatus(o.estado) === "Para cobrar"
+    ).length,
 
-    "Para cobrar":
-      active.filter(o =>
-        normalizedStatus(o.estado) === "Para cobrar"
-      ).length,
-
-    "Deudor":
-      active.filter(o =>
-        normalizedStatus(o.estado) === "Deudor"
-      ).length
-
+    "Deudor": active.filter((o) =>
+      normalizedStatus(o.estado) === "Deudor"
+    ).length
   };
 
   $("summary").innerHTML = `
-
     <div class="summary-card">
       <div class="summary-icon">🖨️</div>
       <strong>${counts["Para hacer"]}</strong>
@@ -316,94 +227,51 @@ function renderSummary() {
       <strong>${counts["Deudor"]}</strong>
       <span>Deudores</span>
     </div>
-
   `;
-
 }
 
-function render() {
-
-  renderSummary();
-
-  const q =
-    $("searchInput")
-      .value
-      .toLowerCase()
-      .trim();
-
-  let data =
-    activeOrders();
-
-  if (currentFilter !== "Todos") {
-
-    data = data.filter(o =>
-      normalizedStatus(o.estado) === currentFilter
-    );
-
-  }
-
-  if (q) {
-
-    data = data.filter(o =>
-
-      `${o.pedido} ${o.cliente} ${o.nota}`
-        .toLowerCase()
-        .includes(q)
-
-    );
-
-  }
+function sortOrders(data) {
+  const sorted = [...data];
 
   if (currentSort === "fecha") {
+    sorted.sort((a, b) => {
+      const fechaA = a.fechaCompromiso || "9999-12-31";
+      const fechaB = b.fechaCompromiso || "9999-12-31";
 
-    data.sort((a, b) =>
+      const byFecha = fechaA.localeCompare(fechaB);
 
-      (a.fechaCompromiso || "9999-12-31")
-        .localeCompare(
-          b.fechaCompromiso || "9999-12-31"
-        )
+      if (byFecha !== 0) {
+        return byFecha;
+      }
 
-    );
-
+      return (a.fechaCarga || "").localeCompare(b.fechaCarga || "");
+    });
   }
 
   if (currentSort === "nuevos") {
-
-    data.sort((a, b) =>
-
-      (b.fechaCarga || "")
-        .localeCompare(a.fechaCarga || "")
-
+    sorted.sort((a, b) =>
+      (b.fechaCarga || "").localeCompare(a.fechaCarga || "")
     );
-
   }
 
   if (currentSort === "viejos") {
-
-    data.sort((a, b) =>
-
-      (a.fechaCarga || "")
-        .localeCompare(b.fechaCarga || "")
-
+    sorted.sort((a, b) =>
+      (a.fechaCarga || "").localeCompare(b.fechaCarga || "")
     );
-
   }
 
   if (currentSort === "cliente") {
-
-    data.sort((a, b) =>
-
-      (a.cliente || "")
-        .localeCompare(b.cliente || "")
-
+    sorted.sort((a, b) =>
+      (a.cliente || "").localeCompare(
+        b.cliente || "",
+        "es",
+        { sensitivity: "base" }
+      )
     );
-
   }
 
   if (currentSort === "deuda") {
-
-    data.sort((a, b) => {
-
+    sorted.sort((a, b) => {
       const deudaA =
         Number(a.precio || 0) -
         Number(a.sena || 0);
@@ -413,13 +281,39 @@ function render() {
         Number(b.sena || 0);
 
       return deudaB - deudaA;
-
     });
-
   }
 
-  if (!data.length) {
+  return sorted;
+}
 
+function render() {
+  renderSummary();
+
+  const q = $("searchInput")
+    .value
+    .toLowerCase()
+    .trim();
+
+  let data = activeOrders();
+
+  if (currentFilter !== "Todos") {
+    data = data.filter((o) =>
+      normalizedStatus(o.estado) === currentFilter
+    );
+  }
+
+  if (q) {
+    data = data.filter((o) =>
+      `${o.pedido} ${o.cliente} ${o.nota}`
+        .toLowerCase()
+        .includes(q)
+    );
+  }
+
+  data = sortOrders(data);
+
+  if (!data.length) {
     list.innerHTML = `
       <div class="empty">
         No hay pedidos activos en esta vista.
@@ -427,51 +321,37 @@ function render() {
     `;
 
     return;
-
   }
 
-  list.innerHTML =
-    data.map(orderCard).join("");
-
+  list.innerHTML = data.map(orderCard).join("");
 }
 
 function orderCard(o) {
-
-  const estado =
-    normalizedStatus(o.estado);
+  const estado = normalizedStatus(o.estado);
 
   const debe =
     Number(o.precio || 0) -
     Number(o.sena || 0);
 
   const css =
-
     estado === "Deudor"
       ? "deudor"
-
-    : estado === "Para cobrar"
-      ? "espera"
-
-    : estado === "Para entregar"
-      ? "para-entregar"
-
-    : "para-hacer";
+      : estado === "Para cobrar"
+        ? "espera"
+        : estado === "Para entregar"
+          ? "para-entregar"
+          : "para-hacer";
 
   const icon =
-
     estado === "Deudor"
       ? "⚠️"
-
-    : estado === "Para cobrar"
-      ? "💵"
-
-    : estado === "Para entregar"
-      ? "🚗"
-
-    : "🖨️";
+      : estado === "Para cobrar"
+        ? "💵"
+        : estado === "Para entregar"
+          ? "🚗"
+          : "🖨️";
 
   return `
-
     <details class="order-card ${css}">
 
       <summary class="card-summary">
@@ -487,8 +367,7 @@ function orderCard(o) {
           </h3>
 
           <p class="client-line">
-            Para:
-            ${escapeHTML(o.cliente || "sin cliente")}
+            Para: ${escapeHTML(o.cliente || "sin cliente")}
           </p>
 
         </div>
@@ -504,8 +383,7 @@ function orderCard(o) {
         <div class="meta">
 
           <span>
-            Precio:
-            ${money(o.precio)}
+            Precio: ${money(o.precio)}
           </span>
 
           ${
@@ -553,15 +431,11 @@ function orderCard(o) {
       </div>
 
     </details>
-
   `;
-
 }
 
 function actionButtons(id, estado) {
-
   if (estado === "Para hacer") {
-
     return `
       <button
         class="quick"
@@ -570,11 +444,9 @@ function actionButtons(id, estado) {
         🚗 Listo para entregar
       </button>
     `;
-
   }
 
   if (estado === "Para entregar") {
-
     return `
       <button
         class="quick"
@@ -583,13 +455,10 @@ function actionButtons(id, estado) {
         💵 Entregado · pasar a cobrar
       </button>
     `;
-
   }
 
   if (estado === "Para cobrar") {
-
     return `
-
       <button
         class="quick"
         onclick="quickStatus('${id}', 'Finalizado')"
@@ -602,13 +471,10 @@ function actionButtons(id, estado) {
       >
         ⚠️ Quedó debiendo
       </button>
-
     `;
-
   }
 
   if (estado === "Deudor") {
-
     return `
       <button
         class="quick"
@@ -617,30 +483,23 @@ function actionButtons(id, estado) {
         ✅ Pago recibido · finalizar
       </button>
     `;
-
   }
 
   return "";
-
 }
 
 function escapeHTML(str) {
-
   return String(str || "")
-    .replace(/[&<>'"]/g, c => ({
-
+    .replace(/[&<>'"]/g, (c) => ({
       "&": "&amp;",
       "<": "&lt;",
       ">": "&gt;",
       "'": "&#39;",
       '"': "&quot;"
-
     }[c]));
-
 }
 
 function openForm(order = null) {
-
   form.reset();
 
   $("dialogTitle").textContent =
@@ -648,53 +507,31 @@ function openForm(order = null) {
       ? "Editar pedido"
       : "Nuevo pedido";
 
-  $("orderId").value =
-    order?.id || "";
-
-  $("pedido").value =
-    order?.pedido || "";
-
-  $("cliente").value =
-    order?.cliente || "";
-
-  $("precio").value =
-    order?.precio || "";
-
-  $("sena").value =
-    order?.sena || "";
-
-  $("fechaCompromiso").value =
-    order?.fechaCompromiso || "";
-
+  $("orderId").value = order?.id || "";
+  $("pedido").value = order?.pedido || "";
+  $("cliente").value = order?.cliente || "";
+  $("precio").value = order?.precio || "";
+  $("sena").value = order?.sena || "";
+  $("fechaCompromiso").value = order?.fechaCompromiso || "";
   $("estado").value =
-    normalizedStatus(order?.estado) ||
-    DEFAULT_STATUS;
-
-  $("nota").value =
-    order?.nota || "";
+    normalizedStatus(order?.estado) || DEFAULT_STATUS;
+  $("nota").value = order?.nota || "";
 
   dialog.showModal();
-
 }
 
 window.editOrder = function(id) {
-
-  const order =
-    orders.find(o => o.id === id);
+  const order = orders.find((o) => o.id === id);
 
   if (order) {
     openForm(order);
   }
-
 };
 
 window.quickStatus = async function(id, estado) {
+  const previous = orders;
 
-  const previous =
-    orders;
-
-  orders = orders.map(o =>
-
+  orders = orders.map((o) =>
     o.id === id
       ? {
           ...o,
@@ -702,13 +539,11 @@ window.quickStatus = async function(id, estado) {
           actualizado: new Date().toISOString()
         }
       : o
-
   );
 
   render();
 
   try {
-
     await api(
       "updateStatus",
       { id, estado }
@@ -717,28 +552,22 @@ window.quickStatus = async function(id, estado) {
     statusMsg.textContent =
       "Estado actualizado y registrado en Google Sheets.";
 
-    statusMsg.className =
-      "status-msg ok";
+    statusMsg.className = "status-msg ok";
 
     await loadOrders();
-
   } catch (err) {
-
     orders = previous;
-
     render();
-
     alert(err.message);
-
   }
-
 };
 
 form.addEventListener("submit", async (e) => {
-
   e.preventDefault();
 
-  if (savingOrder) return;
+  if (savingOrder) {
+    return;
+  }
 
   savingOrder = true;
 
@@ -746,64 +575,34 @@ form.addEventListener("submit", async (e) => {
     form.querySelector('button[type="submit"]');
 
   submitBtn.disabled = true;
+  submitBtn.textContent = "Guardando...";
 
-  submitBtn.textContent =
-    "Guardando...";
-
-  const id =
-    $("orderId").value || uid();
-
-  const existing =
-    orders.find(o => o.id === id);
+  const id = $("orderId").value || uid();
+  const existing = orders.find((o) => o.id === id);
 
   const order = {
-
     id,
-
-    fechaCarga:
-      existing?.fechaCarga || todayISO(),
-
-    pedido:
-      $("pedido").value.trim(),
-
-    cliente:
-      $("cliente").value.trim(),
-
-    precio:
-      $("precio").value,
-
-    sena:
-      $("sena").value,
-
-    estado:
-      $("estado").value || DEFAULT_STATUS,
-
-    fechaCompromiso:
-      $("fechaCompromiso").value,
-
-    nota:
-      $("nota").value.trim(),
-
-    actualizado:
-      new Date().toISOString()
-
+    fechaCarga: existing?.fechaCarga || todayISO(),
+    pedido: $("pedido").value.trim(),
+    cliente: $("cliente").value.trim(),
+    precio: $("precio").value,
+    sena: $("sena").value,
+    estado: $("estado").value || DEFAULT_STATUS,
+    fechaCompromiso: $("fechaCompromiso").value,
+    nota: $("nota").value.trim(),
+    actualizado: new Date().toISOString()
   };
 
   if (!order.pedido) {
-
     savingOrder = false;
 
     submitBtn.disabled = false;
-
-    submitBtn.textContent =
-      "Guardar en Sheet";
+    submitBtn.textContent = "Guardar en Sheet";
 
     return;
-
   }
 
   try {
-
     await api("save", { order });
 
     dialog.close();
@@ -811,8 +610,7 @@ form.addEventListener("submit", async (e) => {
     statusMsg.textContent =
       "Pedido guardado en Google Sheets.";
 
-    statusMsg.className =
-      "status-msg ok";
+    statusMsg.className = "status-msg ok";
 
     await loadOrders();
 
@@ -823,81 +621,57 @@ form.addEventListener("submit", async (e) => {
 
     document
       .querySelectorAll(".tab")
-      .forEach(t =>
-
+      .forEach((t) =>
         t.classList.toggle(
           "active",
           t.dataset.filter === currentFilter
         )
-
       );
 
     render();
-
   } catch (err) {
-
     alert(err.message);
-
   } finally {
-
     savingOrder = false;
 
     submitBtn.disabled = false;
-
-    submitBtn.textContent =
-      "Guardar en Sheet";
-
+    submitBtn.textContent = "Guardar en Sheet";
   }
-
 });
 
-$("newOrderBtn")
-  .addEventListener("click", () => {
-    openForm();
-  });
+$("newOrderBtn").addEventListener("click", () => {
+  openForm();
+});
 
-$("closeDialogBtn")
-  .addEventListener("click", () => {
-    dialog.close();
-  });
+$("closeDialogBtn").addEventListener("click", () => {
+  dialog.close();
+});
 
-$("syncBtn")
-  .addEventListener("click", loadOrders);
+$("syncBtn").addEventListener("click", loadOrders);
 
-$("searchInput")
-  .addEventListener("input", render);
+$("searchInput").addEventListener("input", render);
 
-$("sortSelect")
-  .addEventListener("change", (e) => {
-
-    currentSort =
-      e.target.value;
-
-    render();
-
-  });
+$("sortSelect").addEventListener("change", (e) => {
+  currentSort = e.target.value;
+  render();
+});
 
 document
   .querySelectorAll(".tab")
-  .forEach(tab => {
-
+  .forEach((tab) => {
     tab.addEventListener("click", () => {
-
       document
         .querySelectorAll(".tab")
-        .forEach(t =>
+        .forEach((t) =>
           t.classList.remove("active")
         );
 
       tab.classList.add("active");
 
-      currentFilter =
-        tab.dataset.filter;
+      currentFilter = tab.dataset.filter;
 
       render();
-
     });
-
   });
 
 loadOrders();

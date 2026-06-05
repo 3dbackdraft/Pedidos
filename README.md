@@ -12,6 +12,16 @@ App simple para manejar pedidos desde celular o computadora, conectada a Google 
 
 Los pedidos en estado **Finalizado** no se muestran en la app, pero quedan guardados como registro en la hoja `BASE PEDIDOS`.
 
+## Ordenamiento agregado
+
+La pantalla de pedidos ahora incluye un selector para ordenar por:
+
+- Fecha compromiso
+- Más nuevos primero
+- Más viejos primero
+- Cliente A-Z
+- Mayor deuda primero
+
 ## URL de Apps Script cargada en `app.js`
 
 ```txt
@@ -27,11 +37,6 @@ const SPREADSHEET_ID = '1keP-JZV0c8p_3_-pzGpU4ifJ0u1WvY00GOQDRY-YL2U';
 ```
 
 Ese ID debe ser el de la **hoja de cálculo**, no el del Apps Script.
-Sale de esta parte de la URL:
-
-```txt
-https://docs.google.com/spreadsheets/d/ESTE_ES_EL_ID/edit
-```
 
 La pestaña debe llamarse exactamente:
 
@@ -44,10 +49,8 @@ BASE PEDIDOS
 1. Copiar todo `apps-script.gs` y pegarlo en `Code.gs`.
 2. Guardar.
 3. Ejecutar `setup()`.
-4. Ejecutar `probarGuardado()`.
-5. Revisar que aparezca una fila de prueba en el Sheet.
-6. Ir a **Implementar > Administrar implementaciones > Editar > Nueva versión**.
-7. Mantener acceso como **Cualquier persona** y ejecución como **Yo**.
+4. Ir a **Implementar > Administrar implementaciones > Editar > Nueva versión**.
+5. Mantener acceso como **Cualquier persona** y ejecución como **Yo**.
 
 ## Prueba rápida
 
@@ -57,4 +60,12 @@ Abrí esta URL en el navegador:
 https://script.google.com/macros/s/AKfycbwGlarDJWfz6LrxvqLVPDBvbroJ9PADBXWspqnE_VFAJXcPZI5bVWt6Z1TTqjcDecc/exec?action=diagnostico
 ```
 
-Tiene que devolver un JSON con `ok: true`, nombre del archivo, nombre de hoja y cantidad de filas.
+Tiene que devolver un JSON con `ok: true`.
+
+## Uso recomendado
+
+Entrar desde:
+
+```txt
+https://3dbackdraft.github.io/Pedidos/?v=2
+```

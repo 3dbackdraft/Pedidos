@@ -4,10 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>3D Backdraft · Pedidos</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=2" />
 </head>
+
 <body>
+
   <header class="topbar">
+
     <div class="brand">
       <img src="logo-3d-backdraft.png" alt="3D Backdraft" />
       <div>
@@ -15,15 +18,36 @@
         <span>3D Backdraft</span>
       </div>
     </div>
+
     <div class="top-actions">
       <button id="newOrderBtn" class="primary compact">+ Nuevo</button>
       <button id="syncBtn" class="icon-btn" title="Actualizar">↻</button>
     </div>
+
   </header>
 
   <main>
+
     <section class="toolbar">
-      <input id="searchInput" type="search" placeholder="Buscar producto, cliente o nota..." />
+
+      <input
+        id="searchInput"
+        type="search"
+        placeholder="Buscar producto, cliente o nota..."
+      />
+
+      <label class="sort-control">
+        <span>Ordenar</span>
+
+        <select id="sortSelect">
+          <option value="fecha">Fecha compromiso</option>
+          <option value="nuevos">Más nuevos primero</option>
+          <option value="viejos">Más viejos primero</option>
+          <option value="cliente">Cliente A-Z</option>
+          <option value="deuda">Mayor deuda primero</option>
+        </select>
+      </label>
+
     </section>
 
     <nav class="tabs" aria-label="Estados de pedidos">
@@ -35,46 +59,76 @@
     </nav>
 
     <section id="statusMsg" class="status-msg"></section>
+
     <section id="ordersList" class="orders-list"></section>
 
     <section class="summary-wrap" aria-label="Resumen de pedidos">
       <h2>Recuento</h2>
       <section class="summary" id="summary"></section>
     </section>
+
   </main>
 
   <dialog id="orderDialog">
+
     <form id="orderForm" method="dialog" class="form-card">
+
       <div class="dialog-head">
+
         <div>
           <p class="eyebrow mini">Carga rápida</p>
           <h2 id="dialogTitle">Nuevo pedido</h2>
         </div>
+
         <button type="button" id="closeDialogBtn" class="ghost">×</button>
+
       </div>
 
       <input type="hidden" id="orderId" />
 
       <label>
         Producto / pedido *
-        <textarea id="pedido" rows="3" placeholder="Ej: 10 llaveros bomberos + nombres" required></textarea>
+        <textarea
+          id="pedido"
+          rows="3"
+          placeholder="Ej: 10 llaveros bomberos + nombres"
+          required
+        ></textarea>
       </label>
 
       <label>
         Para quién
-        <input id="cliente" type="text" placeholder="Opcional" />
+        <input
+          id="cliente"
+          type="text"
+          placeholder="Opcional"
+        />
       </label>
 
       <div class="grid-2">
+
         <label>
           Precio
-          <input id="precio" type="number" min="0" step="1" placeholder="Opcional" />
+          <input
+            id="precio"
+            type="number"
+            min="0"
+            step="1"
+            placeholder="Opcional"
+          />
         </label>
 
         <label>
           Seña / pagado
-          <input id="sena" type="number" min="0" step="1" placeholder="Opcional" />
+          <input
+            id="sena"
+            type="number"
+            min="0"
+            step="1"
+            placeholder="Opcional"
+          />
         </label>
+
       </div>
 
       <label>
@@ -95,13 +149,22 @@
 
       <label>
         Nota
-        <textarea id="nota" rows="2" placeholder="Color, entrega, medidas, link de referencia, etc."></textarea>
+        <textarea
+          id="nota"
+          rows="2"
+          placeholder="Color, entrega, medidas, link de referencia, etc."
+        ></textarea>
       </label>
 
-      <button class="primary full" type="submit">Guardar en Sheet</button>
+      <button class="primary full" type="submit">
+        Guardar en Sheet
+      </button>
+
     </form>
+
   </dialog>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=2"></script>
+
 </body>
 </html>
