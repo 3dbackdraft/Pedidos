@@ -1,16 +1,11 @@
-/*
-  CONFIGURACIÓN
-  Esta URL ya es tu implementación /exec.
-  La app escribe en Google Sheets usando JSONP para evitar bloqueos CORS desde GitHub Pages.
-*/
 const API_URL = "https://script.google.com/macros/s/AKfycbwGlarDJWfz6LrxvqLVPDBvbroJ9PADBXWspqnE_VFAJXcPZI5bVWt6Z1TTqjcDecc/exec";
 
 const DEFAULT_STATUS = "Para hacer";
-const ACTIVE_STATUSES = ["Para hacer", "Para entregar", "Para cobrar", "Deudor"];
 const HIDDEN_STATUSES = ["Finalizado"];
 
 let orders = [];
 let currentFilter = "Para hacer";
+let savingOrder = false;
 
 const $ = (id) => document.getElementById(id);
 const list = $("ordersList");
@@ -26,7 +21,11 @@ function money(value) {
   if (value === "" || value === null || value === undefined) return "Sin precio";
   const n = Number(value);
   if (Number.isNaN(n)) return "Sin precio";
-  return n.toLocaleString("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 });
+  return n.toLocaleString("es-AR", {
+    style: "currency",
+    currency: "ARS",
+    maximumFractionDigits: 0
+  });
 }
 
 function todayISO() {
@@ -48,14 +47,8 @@ function base64UrlEncodeUnicode(obj) {
 }
 
 function api(action, payload = {}) {
-  if (!API_URL) return localApi(action, payload);
-
   if (action === "list") {
     return jsonp(`${API_URL}?action=list`);
-  }
-
-  if (action === "diagnostico") {
-    return jsonp(`${API_URL}?action=diagnostico`);
   }
 
   if (action === "save") {
@@ -64,7 +57,11 @@ function api(action, payload = {}) {
   }
 
   if (action === "updateStatus") {
-    const qs = new URLSearchParams({ action: "updateStatus", id: payload.id, estado: payload.estado });
+    const qs = new URLSearchParams({
+      action: "updateStatus",
+      id: payload.id,
+      estado: payload.estado
+    });
     return jsonp(`${API_URL}?${qs.toString()}`);
   }
 
@@ -76,6 +73,7 @@ function jsonp(url) {
     const callbackName = "cb_" + Date.now() + "_" + Math.random().toString(36).slice(2);
     const sep = url.includes("?") ? "&" : "?";
     const script = document.createElement("script");
+
     const timer = setTimeout(() => {
       cleanup();
       reject(new Error("No respondió Google Sheets. Revisá la implementación /exec y permisos."));
@@ -89,8 +87,11 @@ function jsonp(url) {
 
     window[callbackName] = (data) => {
       cleanup();
-      if (!data || data.ok === false) reject(new Error(data?.error || "Error al guardar en Google Sheets"));
-      else resolve(data);
+      if (!data || data.ok === false) {
+        reject(new Error(data?.error || "Error al guardar en Google Sheets"));
+      } else {
+        resolve(data);
+      }
     };
 
     script.onerror = () => {
@@ -103,34 +104,22 @@ function jsonp(url) {
   });
 }
 
-function localApi(action, payload) {
-  const key = "pedidos_3d_backdraft";
-  const saved = JSON.parse(localStorage.getItem(key) || "[]");
-
-  if (action === "list") return Promise.resolve({ ok: true, data: saved });
-  if (action === "save") {
-    const incoming = payload.order;
-    const idx = saved.findIndex(o => o.id === incoming.id);
-    const next = idx >= 0 ? saved.map(o => o.id === incoming.id ? incoming : o) : [incoming, ...saved];
-    localStorage.setItem(key, JSON.stringify(next));
-    return Promise.resolve({ ok: true, data: incoming });
-  }
-  if (action === "updateStatus") {
-    const next = saved.map(o => o.id === payload.id ? { ...o, estado: payload.estado, actualizado: new Date().toISOString() } : o);
-    localStorage.setItem(key, JSON.stringify(next));
-    return Promise.resolve({ ok: true });
-  }
-}
-
 async function loadOrders() {
   statusMsg.textContent = "Actualizando pedidos...";
   statusMsg.className = "status-msg";
+
   try {
     const result = await api("list");
-    orders = (result.data || []).map(o => ({ ...o, estado: normalizedStatus(o.estado) }));
+    orders = (result.data || []).map(o => ({
+      ...o,
+      estado: normalizedStatus(o.estado)
+    }));
+
     render();
-    statusMsg.textContent = API_URL ? "Conectado a Google Sheets · los cambios se guardan en BASE PEDIDOS." : "Modo prueba local: pegá tu URL de Apps Script en app.js.";
+
+    statusMsg.textContent = "Conectado a Google Sheets · los cambios se guardan en BASE PEDIDOS.";
     statusMsg.className = "status-msg ok";
+
   } catch (err) {
     statusMsg.textContent = err.message;
     statusMsg.className = "status-msg error";
@@ -143,11 +132,12 @@ function activeOrders() {
 
 function renderSummary() {
   const active = activeOrders();
+
   const counts = {
     "Para hacer": active.filter(o => normalizedStatus(o.estado) === "Para hacer").length,
     "Para entregar": active.filter(o => normalizedStatus(o.estado) === "Para entregar").length,
     "Para cobrar": active.filter(o => normalizedStatus(o.estado) === "Para cobrar").length,
-    "Deudor": active.filter(o => normalizedStatus(o.estado) === "Deudor").length,
+    "Deudor": active.filter(o => normalizedStatus(o.estado) === "Deudor").length
   };
 
   $("summary").innerHTML = `
@@ -160,13 +150,23 @@ function renderSummary() {
 
 function render() {
   renderSummary();
+
   const q = $("searchInput").value.toLowerCase().trim();
   let data = activeOrders();
 
-  if (currentFilter !== "Todos") data = data.filter(o => normalizedStatus(o.estado) === currentFilter);
-  if (q) data = data.filter(o => `${o.pedido} ${o.cliente} ${o.nota}`.toLowerCase().includes(q));
+  if (currentFilter !== "Todos") {
+    data = data.filter(o => normalizedStatus(o.estado) === currentFilter);
+  }
 
-  data.sort((a, b) => (a.fechaCompromiso || "9999-12-31").localeCompare(b.fechaCompromiso || "9999-12-31"));
+  if (q) {
+    data = data.filter(o =>
+      `${o.pedido} ${o.cliente} ${o.nota}`.toLowerCase().includes(q)
+    );
+  }
+
+  data.sort((a, b) =>
+    (a.fechaCompromiso || "9999-12-31").localeCompare(b.fechaCompromiso || "9999-12-31")
+  );
 
   if (!data.length) {
     list.innerHTML = `<div class="empty">No hay pedidos activos en esta vista.</div>`;
@@ -179,14 +179,23 @@ function render() {
 function orderCard(o) {
   const estado = normalizedStatus(o.estado);
   const debe = Number(o.precio || 0) - Number(o.sena || 0);
-  const css = estado === "Deudor" ? "deudor" : estado === "Para cobrar" ? "espera" : estado === "Para entregar" ? "para-entregar" : "para-hacer";
-  const icon = estado === "Deudor" ? "⚠️" : estado === "Para cobrar" ? "💵" : estado === "Para entregar" ? "🚗" : "🖨️";
-  const actions = actionButtons(o.id, estado);
+
+  const css =
+    estado === "Deudor" ? "deudor" :
+    estado === "Para cobrar" ? "espera" :
+    estado === "Para entregar" ? "para-entregar" :
+    "para-hacer";
+
+  const icon =
+    estado === "Deudor" ? "⚠️" :
+    estado === "Para cobrar" ? "💵" :
+    estado === "Para entregar" ? "🚗" :
+    "🖨️";
 
   return `
-    <details class="order-card ${css}" data-icon="${icon}">
+    <details class="order-card ${css}">
       <summary class="card-summary">
-        <div class="mini-icon" aria-hidden="true">${icon}</div>
+        <div class="mini-icon">${icon}</div>
         <div class="summary-main">
           <h3 class="order-title">${escapeHTML(o.pedido || "Pedido sin nombre")}</h3>
           <p class="client-line">Para: ${escapeHTML(o.cliente || "sin cliente")}</p>
@@ -202,9 +211,11 @@ function orderCard(o) {
           ${o.fechaCompromiso ? `<span>Entrega: ${escapeHTML(o.fechaCompromiso)}</span>` : ""}
           ${o.fechaCarga ? `<span>Cargado: ${escapeHTML(o.fechaCarga)}</span>` : ""}
         </div>
+
         ${o.nota ? `<p class="note">${escapeHTML(o.nota)}</p>` : `<p class="note muted-note">Sin observaciones cargadas.</p>`}
+
         <div class="card-actions">
-          ${actions}
+          ${actionButtons(o.id, estado)}
           <button onclick="editOrder('${o.id}')">✏️ Editar</button>
         </div>
       </div>
@@ -216,24 +227,38 @@ function actionButtons(id, estado) {
   if (estado === "Para hacer") {
     return `<button class="quick" onclick="quickStatus('${id}', 'Para entregar')">🚗 Listo para entregar</button>`;
   }
+
   if (estado === "Para entregar") {
     return `<button class="quick" onclick="quickStatus('${id}', 'Para cobrar')">💵 Entregado · pasar a cobrar</button>`;
   }
+
   if (estado === "Para cobrar") {
-    return `<button class="quick" onclick="quickStatus('${id}', 'Finalizado')">✅ Cobrado · finalizar</button><button onclick="quickStatus('${id}', 'Deudor')">⚠️ Quedó debiendo</button>`;
+    return `
+      <button class="quick" onclick="quickStatus('${id}', 'Finalizado')">✅ Cobrado · finalizar</button>
+      <button onclick="quickStatus('${id}', 'Deudor')">⚠️ Quedó debiendo</button>
+    `;
   }
+
   if (estado === "Deudor") {
     return `<button class="quick" onclick="quickStatus('${id}', 'Finalizado')">✅ Pago recibido · finalizar</button>`;
   }
+
   return "";
 }
 
 function escapeHTML(str) {
-  return String(str || "").replace(/[&<>'"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[c]));
+  return String(str || "").replace(/[&<>'"]/g, c => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "'": "&#39;",
+    '"': "&quot;"
+  }[c]));
 }
 
 function openForm(order = null) {
   form.reset();
+
   $("dialogTitle").textContent = order ? "Editar pedido" : "Nuevo pedido";
   $("orderId").value = order?.id || "";
   $("pedido").value = order?.pedido || "";
@@ -243,6 +268,7 @@ function openForm(order = null) {
   $("fechaCompromiso").value = order?.fechaCompromiso || "";
   $("estado").value = normalizedStatus(order?.estado) || DEFAULT_STATUS;
   $("nota").value = order?.nota || "";
+
   dialog.showModal();
 }
 
@@ -253,13 +279,21 @@ window.editOrder = function(id) {
 
 window.quickStatus = async function(id, estado) {
   const previous = orders;
-  orders = orders.map(o => o.id === id ? { ...o, estado, actualizado: new Date().toISOString() } : o);
+
+  orders = orders.map(o =>
+    o.id === id ? { ...o, estado, actualizado: new Date().toISOString() } : o
+  );
+
   render();
+
   try {
     await api("updateStatus", { id, estado });
+
     statusMsg.textContent = "Estado actualizado y registrado en Google Sheets.";
     statusMsg.className = "status-msg ok";
+
     await loadOrders();
+
   } catch (err) {
     orders = previous;
     render();
@@ -269,8 +303,18 @@ window.quickStatus = async function(id, estado) {
 
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
+
+  if (savingOrder) return;
+
+  savingOrder = true;
+
+  const submitBtn = form.querySelector('button[type="submit"]');
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Guardando...";
+
   const id = $("orderId").value || uid();
   const existing = orders.find(o => o.id === id);
+
   const order = {
     id,
     fechaCarga: existing?.fechaCarga || todayISO(),
@@ -284,19 +328,40 @@ form.addEventListener("submit", async (e) => {
     actualizado: new Date().toISOString()
   };
 
-  if (!order.pedido) return;
+  if (!order.pedido) {
+    savingOrder = false;
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Guardar en Sheet";
+    return;
+  }
 
   try {
     await api("save", { order });
+
     dialog.close();
+
     statusMsg.textContent = "Pedido guardado en Google Sheets.";
     statusMsg.className = "status-msg ok";
+
     await loadOrders();
-    currentFilter = HIDDEN_STATUSES.includes(order.estado) ? "Para hacer" : order.estado;
-    document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.filter === currentFilter));
+
+    currentFilter = HIDDEN_STATUSES.includes(order.estado)
+      ? "Para hacer"
+      : order.estado;
+
+    document.querySelectorAll(".tab").forEach(t =>
+      t.classList.toggle("active", t.dataset.filter === currentFilter)
+    );
+
     render();
+
   } catch (err) {
     alert(err.message);
+
+  } finally {
+    savingOrder = false;
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Guardar en Sheet";
   }
 });
 
