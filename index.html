@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>3D Backdraft · Pedidos</title>
-  <link rel="stylesheet" href="styles.css?v=2" />
+  <link rel="stylesheet" href="styles.css?v=6" />
 </head>
 
 <body>
@@ -20,7 +20,8 @@
     </div>
 
     <div class="top-actions">
-      <button id="newOrderBtn" class="primary compact">+ Nuevo</button>
+      <button id="newPurchaseBtn" class="secondary compact">+ Compra</button>
+      <button id="newOrderBtn" class="primary compact">+ Pedido</button>
       <button id="syncBtn" class="icon-btn" title="Actualizar">↻</button>
     </div>
 
@@ -28,43 +29,93 @@
 
   <main>
 
-    <section class="toolbar">
-
-      <input
-        id="searchInput"
-        type="search"
-        placeholder="Buscar producto, cliente o nota..."
-      />
-
-      <label class="sort-control">
-        <span>Ordenar</span>
-
-        <select id="sortSelect">
-          <option value="fecha">Fecha compromiso</option>
-          <option value="nuevos">Más nuevos primero</option>
-          <option value="viejos">Más viejos primero</option>
-          <option value="cliente">Cliente A-Z</option>
-          <option value="deuda">Mayor deuda primero</option>
-        </select>
-      </label>
-
-    </section>
-
-    <nav class="tabs" aria-label="Estados de pedidos">
-      <button class="tab active" data-filter="Para hacer"><span>🖨️</span><b>Para hacer</b></button>
-      <button class="tab" data-filter="Para entregar"><span>🚗</span><b>Para entregar</b></button>
-      <button class="tab" data-filter="Para cobrar"><span>💵</span><b>Para cobrar</b></button>
-      <button class="tab" data-filter="Deudor"><span>⚠️</span><b>Deudores</b></button>
-      <button class="tab" data-filter="Todos"><span>📋</span><b>Activos</b></button>
+    <nav class="view-tabs" aria-label="Vistas">
+      <button class="view-tab active" data-view="pedidos">Pedidos</button>
+      <button class="view-tab" data-view="billetera">Billetera</button>
     </nav>
 
     <section id="statusMsg" class="status-msg"></section>
 
-    <section id="ordersList" class="orders-list"></section>
+    <section id="ordersView">
 
-    <section class="summary-wrap" aria-label="Resumen de pedidos">
-      <h2>Recuento</h2>
-      <section class="summary" id="summary"></section>
+      <section class="toolbar">
+
+        <input
+          id="searchInput"
+          type="search"
+          placeholder="Buscar producto, cliente o nota..."
+        />
+
+        <label class="sort-control">
+          <span>Ordenar</span>
+
+          <select id="sortSelect">
+            <option value="nuevos">Más nuevos primero</option>
+            <option value="viejos">Más viejos primero</option>
+            <option value="cliente">Cliente A-Z</option>
+            <option value="deuda">Mayor deuda primero</option>
+            <option value="monto">Mayor venta primero</option>
+          </select>
+        </label>
+
+      </section>
+
+      <nav class="tabs" aria-label="Estados de pedidos">
+        <button class="tab active" data-filter="Para hacer"><span>🖨️</span><b>Para hacer</b></button>
+        <button class="tab" data-filter="Para entregar"><span>🚗</span><b>Para entregar</b></button>
+        <button class="tab" data-filter="Para publicar"><span>📸</span><b>Para publicar</b></button>
+        <button class="tab" data-filter="Para cobrar"><span>💵</span><b>Para cobrar</b></button>
+        <button class="tab" data-filter="Deudor"><span>⚠️</span><b>Deudores</b></button>
+        <button class="tab" data-filter="Todos"><span>📋</span><b>Activos</b></button>
+      </nav>
+
+      <section id="publicationTools" class="publication-tools hidden">
+        <button id="newManualPublicationBtn" class="secondary compact" type="button">+ Publicación manual</button>
+      </section>
+
+      <section id="ordersList" class="orders-list"></section>
+
+      <section class="summary-wrap" aria-label="Resumen de pedidos">
+        <h2>Recuento</h2>
+        <section class="summary" id="summary"></section>
+      </section>
+
+    </section>
+
+    <section id="walletView" class="hidden">
+
+      <section class="metrics-panel" aria-label="Billetera">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow mini">Billetera</p>
+            <h2>Cobros, gastos y pendientes</h2>
+          </div>
+          <button class="secondary compact" type="button" onclick="document.getElementById('newPurchaseBtn').click()">+ Compra</button>
+        </div>
+
+        <section class="metrics wallet-metrics" id="metrics"></section>
+      </section>
+
+      <section class="dashboard-grid wallet-grid">
+        <section class="summary-wrap" aria-label="Ultimas compras">
+          <div class="inline-head">
+            <h2>Últimas compras</h2>
+            <button id="newPurchaseBtnInline" class="ghost mini-btn" type="button" onclick="document.getElementById('newPurchaseBtn').click()">+</button>
+          </div>
+          <section class="purchase-list" id="purchaseList"></section>
+        </section>
+
+        <section class="summary-wrap" aria-label="Lectura de billetera">
+          <h2>Lectura rápida</h2>
+          <section class="wallet-notes" id="walletNotes"></section>
+        </section>
+
+        <section class="summary-wrap wide-panel" aria-label="Movimientos de billetera">
+          <h2>Movimientos</h2>
+          <section class="movement-list" id="movementList"></section>
+        </section>
+      </section>
+
     </section>
 
   </main>
@@ -105,35 +156,52 @@
         />
       </label>
 
-      <div class="grid-2">
+      <div class="grid-3">
 
         <label>
-          Precio
+          Precio unitario
           <input
-            id="precio"
+            id="precioUnitario"
             type="number"
             min="0"
             step="1"
-            placeholder="Opcional"
+            placeholder="0"
           />
         </label>
 
         <label>
-          Seña / pagado
+          Cantidad
           <input
-            id="sena"
+            id="cantidad"
+            type="number"
+            min="1"
+            step="1"
+            placeholder="1"
+          />
+        </label>
+
+        <label>
+          Precio total
+          <input
+            id="precioTotal"
             type="number"
             min="0"
             step="1"
-            placeholder="Opcional"
+            placeholder="0"
           />
         </label>
 
       </div>
 
       <label>
-        Fecha compromiso
-        <input id="fechaCompromiso" type="date" />
+        Seña / pagado
+        <input
+          id="sena"
+          type="number"
+          min="0"
+          step="1"
+          placeholder="Opcional"
+        />
       </label>
 
       <label>
@@ -145,6 +213,11 @@
           <option>Deudor</option>
           <option>Finalizado</option>
         </select>
+      </label>
+
+      <label class="check-row">
+        <input id="publicar" type="checkbox" />
+        <span>Pendiente de publicar</span>
       </label>
 
       <label>
@@ -164,7 +237,184 @@
 
   </dialog>
 
-  <script src="app.js?v=2"></script>
+  <dialog id="publicationDialog">
+
+    <form id="publicationForm" method="dialog" class="form-card">
+
+      <div class="dialog-head">
+
+        <div>
+          <p class="eyebrow mini">Publicación</p>
+          <h2 id="publicationTitle">Publicar</h2>
+          <p id="publicationProduct" class="dialog-subtitle"></p>
+        </div>
+
+        <button type="button" id="closePublicationDialogBtn" class="ghost">×</button>
+
+      </div>
+
+      <input type="hidden" id="publicationOrderId" />
+      <input type="hidden" id="publicationChannel" />
+
+      <label>
+        Info editable para publicar
+        <textarea
+          id="publicationText"
+          rows="5"
+          placeholder="Texto, título, descripción, medidas, hashtags o detalle del producto..."
+        ></textarea>
+      </label>
+
+      <label>
+        Comentario
+        <textarea
+          id="publicationComment"
+          rows="3"
+          placeholder="Pendientes, fotos que faltan, precio sugerido, variantes, etc."
+        ></textarea>
+      </label>
+
+      <label>
+        Estado de publicación
+        <select id="publicationStatus">
+          <option>Pendiente</option>
+          <option>Publicado</option>
+        </select>
+      </label>
+
+      <button class="primary full" type="submit">
+        Guardar publicación
+      </button>
+
+    </form>
+
+  </dialog>
+
+  <dialog id="manualPublicationDialog">
+
+    <form id="manualPublicationForm" method="dialog" class="form-card">
+
+      <div class="dialog-head">
+
+        <div>
+          <p class="eyebrow mini">Manual</p>
+          <h2>Nueva publicación</h2>
+        </div>
+
+        <button type="button" id="closeManualPublicationDialogBtn" class="ghost">×</button>
+
+      </div>
+
+      <label>
+        Producto / publicación *
+        <textarea
+          id="manualPublicationText"
+          rows="4"
+          placeholder="Ej: Mate personalizado, medidas, color, precio sugerido..."
+          required
+        ></textarea>
+      </label>
+
+      <label>
+        Referencia / cliente
+        <input
+          id="manualPublicationClient"
+          type="text"
+          placeholder="Opcional"
+        />
+      </label>
+
+      <fieldset class="channel-field">
+        <legend>Publicar en</legend>
+
+        <label class="check-row">
+          <input id="manualInstagram" type="checkbox" checked />
+          <span>Instagram</span>
+        </label>
+
+        <label class="check-row">
+          <input id="manualMercadoLibre" type="checkbox" checked />
+          <span>Mercado Libre</span>
+        </label>
+      </fieldset>
+
+      <label>
+        Comentario
+        <textarea
+          id="manualPublicationComment"
+          rows="3"
+          placeholder="Fotos pendientes, variantes, precio, idea de copy..."
+        ></textarea>
+      </label>
+
+      <button class="primary full" type="submit">
+        Crear publicación
+      </button>
+
+    </form>
+
+  </dialog>
+
+  <dialog id="purchaseDialog">
+
+    <form id="purchaseForm" method="dialog" class="form-card">
+
+      <div class="dialog-head">
+
+        <div>
+          <p class="eyebrow mini">Compras</p>
+          <h2>Nueva compra</h2>
+        </div>
+
+        <button type="button" id="closePurchaseDialogBtn" class="ghost">×</button>
+
+      </div>
+
+      <label>
+        Fecha
+        <input id="purchaseDate" type="date" />
+      </label>
+
+      <label>
+        Qué se compró *
+        <input
+          id="purchaseConcept"
+          type="text"
+          placeholder="Filamento, repuesto, embalaje..."
+          required
+        />
+      </label>
+
+      <label>
+        Monto *
+        <input
+          id="purchaseAmount"
+          type="number"
+          min="0"
+          step="1"
+          placeholder="0"
+          required
+        />
+      </label>
+
+      <label>
+        Nota
+        <textarea
+          id="purchaseNote"
+          rows="2"
+          placeholder="Proveedor, color, cantidad, motivo..."
+        ></textarea>
+      </label>
+
+      <button class="primary full" type="submit">
+        Guardar compra
+      </button>
+
+    </form>
+
+  </dialog>
+
+  <script src="app.js?v=6"></script>
 
 </body>
 </html>

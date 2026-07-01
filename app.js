@@ -1,12 +1,37 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbwGlarDJWfz6LrxvqLVPDBvbroJ9PADBXWspqnE_VFAJXcPZI5bVWt6Z1TTqjcDecc/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbzxZw_6sg86FlLSfnEkk4wvOfvdk2Xpr8WIjet0w3bwVe7PMzZlpMaoKzvGB0omy_Ym/exec";
 
 const DEFAULT_STATUS = "Para hacer";
 const HIDDEN_STATUSES = ["Finalizado"];
+const PUBLISH_PENDING = "Pendiente";
+const PUBLISH_DONE = "Publicado";
+const PUBLISH_CHANNELS = {
+  instagram: {
+    key: "instagram",
+    label: "Instagram",
+    icon: "📱",
+    statusField: "instagramEstado",
+    textField: "instagramTexto",
+    commentField: "instagramComentario"
+  },
+  mercadoLibre: {
+    key: "mercadoLibre",
+    label: "Mercado Libre",
+    icon: "🛒",
+    statusField: "mercadoLibreEstado",
+    textField: "mercadoLibreTexto",
+    commentField: "mercadoLibreComentario"
+  }
+};
 
 let orders = [];
+let purchases = [];
+let movements = [];
 let currentFilter = "Para hacer";
-let currentSort = "fecha";
+let currentSort = "nuevos";
+let currentView = "pedidos";
 let savingOrder = false;
+let savingPurchase = false;
+let savingManualPublication = false;
 
 const $ = (id) => document.getElementById(id);
 
@@ -14,9 +39,15 @@ const list = $("ordersList");
 const statusMsg = $("statusMsg");
 const dialog = $("orderDialog");
 const form = $("orderForm");
+const purchaseDialog = $("purchaseDialog");
+const purchaseForm = $("purchaseForm");
+const publicationDialog = $("publicationDialog");
+const publicationForm = $("publicationForm");
+const manualPublicationDialog = $("manualPublicationDialog");
+const manualPublicationForm = $("manualPublicationForm");
 
-function uid() {
-  return "PED-" + new Date()
+function uid(prefix = "PED") {
+  return prefix + "-" + new Date()
     .toISOString()
     .replace(/[-:.TZ]/g, "")
     .slice(0, 14);
@@ -24,13 +55,13 @@ function uid() {
 
 function money(value) {
   if (value === "" || value === null || value === undefined) {
-    return "Sin precio";
+    return "$ 0";
   }
 
   const n = Number(value);
 
   if (Number.isNaN(n)) {
-    return "Sin precio";
+    return "$ 0";
   }
 
   return n.toLocaleString("es-AR", {
@@ -56,6 +87,96 @@ function normalizedStatus(status) {
   return status || DEFAULT_STATUS;
 }
 
+function numberValue(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function totalPrice(order) {
+  const explicitTotal = numberValue(order.precioTotal);
+  if (explicitTotal > 0) return explicitTotal;
+
+  const legacyPrice = numberValue(order.precio);
+  if (legacyPrice > 0) return legacyPrice;
+
+  return numberValue(order.precioUnitario) * numberValue(order.cantidad);
+}
+
+function publishPending(order) {
+  if (!order) return false;
+  return publicationTasks(order).some((task) => task.pending);
+}
+
+function publicationStatus(order, channel) {
+  return String(order?.[channel.statusField] || "").trim();
+}
+
+function publicationPending(order, channel) {
+  const status = publicationStatus(order, channel);
+  return status.toLowerCase() === PUBLISH_PENDING.toLowerCase();
+}
+
+function publicationDone(order, channel) {
+  const status = publicationStatus(order, channel);
+  return status.toLowerCase() === PUBLISH_DONE.toLowerCase();
+}
+
+function publicationText(order, channel) {
+  return order?.[channel.textField] || order?.pedido || "";
+}
+
+function publicationComment(order, channel) {
+  return order?.[channel.commentField] || "";
+}
+
+function publicationTasks(order) {
+  if (!order) return [];
+
+  return Object.values(PUBLISH_CHANNELS).map((channel) => ({
+    order,
+    channel,
+    pending: publicationPending(order, channel),
+    done: publicationDone(order, channel),
+    text: publicationText(order, channel),
+    comment: publicationComment(order, channel)
+  }));
+}
+
+function movementDate(value) {
+  return value?.actualizado || value?.fecha || value?.fechaCarga || "";
+}
+
+function buildFallbackMovements() {
+  const purchaseMovements = purchases.map((p) => ({
+    id: p.id || uid("MOV"),
+    fecha: p.fecha || "",
+    tipo: "Compra",
+    detalle: p.concepto || "Compra",
+    monto: numberValue(p.monto) * -1,
+    referencia: p.nota || ""
+  }));
+
+  const orderMovements = orders
+    .filter((o) => ["Finalizado", "Deudor"].includes(normalizedStatus(o.estado)))
+    .map((o) => {
+      const estado = normalizedStatus(o.estado);
+      const total = totalPrice(o);
+      const debt = Math.max(total - numberValue(o.sena), 0);
+
+      return {
+        id: `${o.id}-${estado}`,
+        fecha: o.actualizado || o.fechaCarga || "",
+        tipo: estado === "Finalizado" ? "Cobro" : "Deudor",
+        detalle: o.pedido || "Pedido",
+        monto: estado === "Finalizado" ? total : debt,
+        referencia: o.cliente || ""
+      };
+    });
+
+  return [...purchaseMovements, ...orderMovements]
+    .sort((a, b) => movementDate(b).localeCompare(movementDate(a)));
+}
+
 function base64UrlEncodeUnicode(obj) {
   const json = JSON.stringify(obj);
   const bytes = new TextEncoder().encode(json);
@@ -72,6 +193,30 @@ function base64UrlEncodeUnicode(obj) {
     .replace(/=+$/g, "");
 }
 
+function compactOrder(order) {
+  return {
+    id: order.id,
+    fechaCarga: order.fechaCarga,
+    pedido: order.pedido,
+    cliente: order.cliente,
+    precioUnitario: order.precioUnitario,
+    cantidad: order.cantidad,
+    precioTotal: order.precioTotal,
+    precio: order.precio,
+    sena: order.sena,
+    estado: order.estado,
+    publicar: order.publicar,
+    instagramEstado: order.instagramEstado,
+    instagramTexto: order.instagramTexto,
+    instagramComentario: order.instagramComentario,
+    mercadoLibreEstado: order.mercadoLibreEstado,
+    mercadoLibreTexto: order.mercadoLibreTexto,
+    mercadoLibreComentario: order.mercadoLibreComentario,
+    nota: order.nota,
+    actualizado: order.actualizado
+  };
+}
+
 function api(action, payload = {}) {
   if (action === "list") {
     return jsonp(`${API_URL}?action=list`);
@@ -82,8 +227,13 @@ function api(action, payload = {}) {
   }
 
   if (action === "save") {
-    const encoded = base64UrlEncodeUnicode(payload.order);
+    const encoded = base64UrlEncodeUnicode(compactOrder(payload.order));
     return jsonp(`${API_URL}?action=save&payload=${encodeURIComponent(encoded)}`);
+  }
+
+  if (action === "savePurchase") {
+    const encoded = base64UrlEncodeUnicode(payload.purchase);
+    return jsonp(`${API_URL}?action=savePurchase&payload=${encodeURIComponent(encoded)}`);
   }
 
   if (action === "updateStatus") {
@@ -96,7 +246,22 @@ function api(action, payload = {}) {
     return jsonp(`${API_URL}?${qs.toString()}`);
   }
 
-  return Promise.reject(new Error("Acción no reconocida"));
+  if (action === "updatePublish") {
+    const qs = new URLSearchParams({
+      action: "updatePublish",
+      id: payload.id,
+      publicar: payload.publicar
+    });
+
+    return jsonp(`${API_URL}?${qs.toString()}`);
+  }
+
+  if (action === "savePublicationTask") {
+    const encoded = base64UrlEncodeUnicode(payload.task);
+    return jsonp(`${API_URL}?action=savePublicationTask&payload=${encodeURIComponent(encoded)}`);
+  }
+
+  return Promise.reject(new Error("Accion no reconocida"));
 }
 
 function jsonp(url) {
@@ -114,10 +279,10 @@ function jsonp(url) {
       cleanup();
       reject(
         new Error(
-          "No respondió Google Sheets. Revisá la implementación /exec y permisos."
+          "No respondio Google Sheets. Revisa la implementacion /exec y permisos."
         )
       );
-    }, 15000);
+    }, 45000);
 
     function cleanup() {
       clearTimeout(timer);
@@ -150,22 +315,41 @@ function jsonp(url) {
   });
 }
 
-async function loadOrders() {
-  statusMsg.textContent = "Actualizando pedidos...";
+async function loadData() {
+  statusMsg.textContent = "Actualizando pedidos, compras y billetera...";
   statusMsg.className = "status-msg";
 
   try {
     const result = await api("list");
 
-    orders = (result.data || []).map((o) => ({
-      ...o,
-      estado: normalizedStatus(o.estado)
-    }));
+    orders = (result.data || []).map((o) => {
+      const estado = normalizedStatus(o.estado);
+      const legacyPending =
+        estado === "Para publicar" ||
+        String(o.publicar || "").toLowerCase() === PUBLISH_PENDING.toLowerCase();
+
+      return {
+        ...o,
+        estado: estado === "Para publicar" ? "Para entregar" : estado,
+        instagramEstado: legacyPending && !o.instagramEstado
+          ? PUBLISH_PENDING
+          : o.instagramEstado,
+        mercadoLibreEstado: legacyPending && !o.mercadoLibreEstado
+          ? PUBLISH_PENDING
+          : o.mercadoLibreEstado,
+        instagramTexto: o.instagramTexto || o.pedido || "",
+        mercadoLibreTexto: o.mercadoLibreTexto || o.pedido || "",
+        publicar: legacyPending ? PUBLISH_PENDING : o.publicar
+      };
+    });
+
+    purchases = result.purchases || [];
+    movements = result.movements || [];
 
     render();
 
     statusMsg.textContent =
-      "Conectado a Google Sheets · los cambios se guardan en BASE PEDIDOS.";
+      "Conectado a Google Sheets. Cambios guardados en BASE PEDIDOS, COMPRAS y MOVIMIENTOS.";
 
     statusMsg.className = "status-msg ok";
   } catch (err) {
@@ -186,21 +370,14 @@ function renderSummary() {
   const active = activeOrders();
 
   const counts = {
-    "Para hacer": active.filter((o) =>
-      normalizedStatus(o.estado) === "Para hacer"
-    ).length,
-
-    "Para entregar": active.filter((o) =>
-      normalizedStatus(o.estado) === "Para entregar"
-    ).length,
-
-    "Para cobrar": active.filter((o) =>
-      normalizedStatus(o.estado) === "Para cobrar"
-    ).length,
-
-    "Deudor": active.filter((o) =>
-      normalizedStatus(o.estado) === "Deudor"
-    ).length
+    "Para hacer": active.filter((o) => normalizedStatus(o.estado) === "Para hacer").length,
+    "Para entregar": active.filter((o) => normalizedStatus(o.estado) === "Para entregar").length,
+    "Para publicar": active.reduce((sum, o) =>
+      sum + publicationTasks(o).filter((task) => task.pending).length,
+      0
+    ),
+    "Para cobrar": active.filter((o) => normalizedStatus(o.estado) === "Para cobrar").length,
+    "Deudor": active.filter((o) => normalizedStatus(o.estado) === "Deudor").length
   };
 
   $("summary").innerHTML = `
@@ -217,6 +394,12 @@ function renderSummary() {
     </div>
 
     <div class="summary-card">
+      <div class="summary-icon">📸</div>
+      <strong>${counts["Para publicar"]}</strong>
+      <span>Para publicar</span>
+    </div>
+
+    <div class="summary-card">
       <div class="summary-icon">💵</div>
       <strong>${counts["Para cobrar"]}</strong>
       <span>Para cobrar</span>
@@ -230,23 +413,133 @@ function renderSummary() {
   `;
 }
 
+function renderMetrics() {
+  const sold = orders.filter((o) => normalizedStatus(o.estado) === "Finalizado");
+  const toCollect = orders.filter((o) => normalizedStatus(o.estado) === "Para cobrar");
+  const debtors = orders.filter((o) => normalizedStatus(o.estado) === "Deudor");
+  const toDeliver = orders.filter((o) => normalizedStatus(o.estado) === "Para entregar");
+  const inProduction = orders.filter((o) => normalizedStatus(o.estado) === "Para hacer");
+
+  const salesTotal = sold.reduce((sum, o) => sum + totalPrice(o), 0);
+  const toCollectTotal = toCollect.reduce((sum, o) => sum + Math.max(totalPrice(o) - numberValue(o.sena), 0), 0);
+  const debtorsTotal = debtors.reduce((sum, o) => sum + Math.max(totalPrice(o) - numberValue(o.sena), 0), 0);
+  const toDeliverTotal = toDeliver.reduce((sum, o) => sum + Math.max(totalPrice(o) - numberValue(o.sena), 0), 0);
+  const inProductionTotal = inProduction.reduce((sum, o) => sum + totalPrice(o), 0);
+  const profit = salesTotal * 0.5;
+  const purchasesTotal = purchases.reduce((sum, p) => sum + numberValue(p.monto), 0);
+  const balance = profit - purchasesTotal;
+  const receivableTotal = toCollectTotal + debtorsTotal;
+  const pipelineTotal = receivableTotal + toDeliverTotal + inProductionTotal;
+
+  $("metrics").innerHTML = `
+    <div class="metric-card">
+      <span>Ingresó cobrado</span>
+      <strong>${money(salesTotal)}</strong>
+    </div>
+
+    <div class="metric-card">
+      <span>Ganancia 50%</span>
+      <strong>${money(profit)}</strong>
+    </div>
+
+    <div class="metric-card">
+      <span>Compras</span>
+      <strong>${money(purchasesTotal)}</strong>
+    </div>
+
+    <div class="metric-card ${balance < 0 ? "negative" : "positive"}">
+      <span>Balance</span>
+      <strong>${money(balance)}</strong>
+    </div>
+
+    <div class="metric-card soft">
+      <span>Para cobrar</span>
+      <strong>${money(toCollectTotal)}</strong>
+    </div>
+
+    <div class="metric-card warn">
+      <span>Deudores</span>
+      <strong>${money(debtorsTotal)}</strong>
+    </div>
+
+    <div class="metric-card soft">
+      <span>Listo para entregar</span>
+      <strong>${money(toDeliverTotal)}</strong>
+    </div>
+
+    <div class="metric-card">
+      <span>En producción</span>
+      <strong>${money(inProductionTotal)}</strong>
+    </div>
+
+    <div class="metric-card">
+      <span>Potencial activo</span>
+      <strong>${money(pipelineTotal)}</strong>
+    </div>
+  `;
+
+  $("walletNotes").innerHTML = `
+    <article class="wallet-note">
+      <strong>Disponible real</strong>
+      <span>Ganancia cobrada menos compras: ${money(balance)}.</span>
+    </article>
+
+    <article class="wallet-note">
+      <strong>Plata pendiente de entrar</strong>
+      <span>Entre para cobrar y deudores: ${money(receivableTotal)}.</span>
+    </article>
+
+    <article class="wallet-note">
+      <strong>Trabajo que todavía puede convertirse en cobro</strong>
+      <span>Pedidos para entregar y en producción: ${money(toDeliverTotal + inProductionTotal)}.</span>
+    </article>
+  `;
+}
+
+function renderPurchases() {
+  const latest = [...purchases]
+    .sort((a, b) => (b.fecha || "").localeCompare(a.fecha || ""))
+    .slice(0, 5);
+
+  $("purchaseList").innerHTML = latest.length
+    ? latest.map((p) => `
+      <article class="purchase-item">
+        <div>
+          <strong>${escapeHTML(p.concepto || "Compra sin detalle")}</strong>
+          <span>${escapeHTML(p.fecha || "")}</span>
+        </div>
+        <b>${money(p.monto)}</b>
+      </article>
+    `).join("")
+    : `<div class="empty compact-empty">Todavia no hay compras cargadas.</div>`;
+}
+
+function renderMovements() {
+  const data = (movements.length ? movements : buildFallbackMovements())
+    .sort((a, b) => movementDate(b).localeCompare(movementDate(a)))
+    .slice(0, 12);
+
+  $("movementList").innerHTML = data.length
+    ? data.map((m) => {
+      const amount = numberValue(m.monto);
+      const isOut = amount < 0 || String(m.tipo || "").toLowerCase() === "compra";
+
+      return `
+        <article class="movement-item ${isOut ? "out" : "in"}">
+          <div>
+            <strong>${escapeHTML(m.tipo || "Movimiento")}</strong>
+            <span>${escapeHTML(m.detalle || "")}</span>
+            <small>${escapeHTML(m.fecha || "")}${m.referencia ? ` · ${escapeHTML(m.referencia)}` : ""}</small>
+          </div>
+          <b>${money(amount)}</b>
+        </article>
+      `;
+    }).join("")
+    : `<div class="empty compact-empty">Todavia no hay movimientos cargados.</div>`;
+}
+
 function sortOrders(data) {
   const sorted = [...data];
-
-  if (currentSort === "fecha") {
-    sorted.sort((a, b) => {
-      const fechaA = a.fechaCompromiso || "9999-12-31";
-      const fechaB = b.fechaCompromiso || "9999-12-31";
-
-      const byFecha = fechaA.localeCompare(fechaB);
-
-      if (byFecha !== 0) {
-        return byFecha;
-      }
-
-      return (a.fechaCarga || "").localeCompare(b.fechaCarga || "");
-    });
-  }
 
   if (currentSort === "nuevos") {
     sorted.sort((a, b) =>
@@ -272,16 +565,15 @@ function sortOrders(data) {
 
   if (currentSort === "deuda") {
     sorted.sort((a, b) => {
-      const deudaA =
-        Number(a.precio || 0) -
-        Number(a.sena || 0);
-
-      const deudaB =
-        Number(b.precio || 0) -
-        Number(b.sena || 0);
+      const deudaA = totalPrice(a) - numberValue(a.sena);
+      const deudaB = totalPrice(b) - numberValue(b.sena);
 
       return deudaB - deudaA;
     });
+  }
+
+  if (currentSort === "monto") {
+    sorted.sort((a, b) => totalPrice(b) - totalPrice(a));
   }
 
   return sorted;
@@ -289,6 +581,10 @@ function sortOrders(data) {
 
 function render() {
   renderSummary();
+  renderMetrics();
+  renderPurchases();
+  renderMovements();
+  renderView();
 
   const q = $("searchInput")
     .value
@@ -298,9 +594,11 @@ function render() {
   let data = activeOrders();
 
   if (currentFilter !== "Todos") {
-    data = data.filter((o) =>
-      normalizedStatus(o.estado) === currentFilter
-    );
+    data = currentFilter === "Para publicar"
+      ? data.filter(publishPending)
+      : data.filter((o) =>
+          normalizedStatus(o.estado) === currentFilter
+        );
   }
 
   if (q) {
@@ -312,6 +610,25 @@ function render() {
   }
 
   data = sortOrders(data);
+
+  if (currentFilter === "Para publicar") {
+    const tasks = data.flatMap((order) =>
+      publicationTasks(order).filter((task) => task.pending)
+    );
+
+    if (!tasks.length) {
+      list.innerHTML = `
+        <div class="empty">
+          No hay publicaciones pendientes.
+        </div>
+      `;
+
+      return;
+    }
+
+    list.innerHTML = tasks.map(publicationTaskCard).join("");
+    return;
+  }
 
   if (!data.length) {
     list.innerHTML = `
@@ -326,30 +643,121 @@ function render() {
   list.innerHTML = data.map(orderCard).join("");
 }
 
+function renderView() {
+  $("ordersView").classList.toggle("hidden", currentView !== "pedidos");
+  $("walletView").classList.toggle("hidden", currentView !== "billetera");
+  $("publicationTools").classList.toggle(
+    "hidden",
+    currentView !== "pedidos" || currentFilter !== "Para publicar"
+  );
+
+  document
+    .querySelectorAll(".view-tab")
+    .forEach((tab) =>
+      tab.classList.toggle("active", tab.dataset.view === currentView)
+    );
+}
+
+function publicationTaskCard(task) {
+  const { order, channel, text, comment } = task;
+  const total = totalPrice(order);
+
+  return `
+    <article class="order-card para-publicar publication-card">
+
+      <div class="card-summary publication-summary">
+
+        <div class="mini-icon">
+          ${channel.icon}
+        </div>
+
+        <div class="summary-main">
+
+          <h3 class="order-title">
+            ${escapeHTML(channel.label)}
+          </h3>
+
+          <p class="client-line">
+            ${escapeHTML(order.pedido || "Pedido sin nombre")}
+          </p>
+
+        </div>
+
+        <span class="badge">
+          Pendiente
+        </span>
+
+      </div>
+
+      <div class="card-detail open-detail">
+
+        <div class="meta">
+          <span>Cliente: ${escapeHTML(order.cliente || "sin cliente")}</span>
+          <span>Total: ${money(total)}</span>
+          <span>Cantidad: ${escapeHTML(order.cantidad || 1)}</span>
+        </div>
+
+        <div class="publication-copy">
+          <strong>Info para publicar</strong>
+          <p>${escapeHTML(text || "Sin texto cargado.")}</p>
+        </div>
+
+        <div class="publication-copy comment">
+          <strong>Comentario</strong>
+          <p>${escapeHTML(comment || "Sin comentario.")}</p>
+        </div>
+
+        <div class="card-actions">
+
+          <button class="quick" onclick="openPublicationEditor('${order.id}', '${channel.key}')">
+            ✏️ Editar publicación
+          </button>
+
+          <button onclick="markChannelPublished('${order.id}', '${channel.key}')">
+            ✅ Marcar publicado
+          </button>
+
+        </div>
+
+      </div>
+
+    </article>
+  `;
+}
+
 function orderCard(o) {
   const estado = normalizedStatus(o.estado);
-
-  const debe =
-    Number(o.precio || 0) -
-    Number(o.sena || 0);
+  const total = totalPrice(o);
+  const debe = total - numberValue(o.sena);
 
   const css =
     estado === "Deudor"
       ? "deudor"
       : estado === "Para cobrar"
         ? "espera"
-        : estado === "Para entregar"
-          ? "para-entregar"
-          : "para-hacer";
+        : publishPending(o)
+          ? "para-publicar"
+          : estado === "Para entregar"
+            ? "para-entregar"
+            : "para-hacer";
 
   const icon =
     estado === "Deudor"
       ? "⚠️"
       : estado === "Para cobrar"
         ? "💵"
-        : estado === "Para entregar"
-          ? "🚗"
-          : "🖨️";
+        : publishPending(o)
+          ? "📸"
+          : estado === "Para entregar"
+            ? "🚗"
+            : "🖨️";
+
+  const badge = publishPending(o) && estado === "Para entregar"
+    ? "Para entregar + publicar"
+    : estado;
+  const pendingLabels = publicationTasks(o)
+    .filter((task) => task.pending)
+    .map((task) => task.channel.label);
 
   return `
     <details class="order-card ${css}">
@@ -373,7 +781,7 @@ function orderCard(o) {
         </div>
 
         <span class="badge">
-          ${escapeHTML(estado)}
+          ${escapeHTML(badge)}
         </span>
 
       </summary>
@@ -382,9 +790,9 @@ function orderCard(o) {
 
         <div class="meta">
 
-          <span>
-            Precio: ${money(o.precio)}
-          </span>
+          <span>Unitario: ${money(o.precioUnitario || total)}</span>
+          <span>Cantidad: ${escapeHTML(o.cantidad || 1)}</span>
+          <span>Total: ${money(total)}</span>
 
           ${
             o.sena
@@ -393,20 +801,20 @@ function orderCard(o) {
           }
 
           ${
-            o.precio
+            total
               ? `<span>Debe: ${money(Math.max(debe, 0))}</span>`
-              : ""
-          }
-
-          ${
-            o.fechaCompromiso
-              ? `<span>Entrega: ${escapeHTML(o.fechaCompromiso)}</span>`
               : ""
           }
 
           ${
             o.fechaCarga
               ? `<span>Cargado: ${escapeHTML(o.fechaCarga)}</span>`
+              : ""
+          }
+
+          ${
+            pendingLabels.length
+              ? `<span>Publicar: ${escapeHTML(pendingLabels.join(" + "))}</span>`
               : ""
           }
 
@@ -420,7 +828,7 @@ function orderCard(o) {
 
         <div class="card-actions">
 
-          ${actionButtons(o.id, estado)}
+          ${actionButtons(o)}
 
           <button onclick="editOrder('${o.id}')">
             ✏️ Editar
@@ -434,24 +842,30 @@ function orderCard(o) {
   `;
 }
 
-function actionButtons(id, estado) {
+function actionButtons(o) {
+  const id = o.id;
+  const estado = normalizedStatus(o.estado);
+  const publishButtons = publicationTasks(o)
+    .filter((task) => task.pending)
+    .map((task) => `
+      <button onclick="openPublicationEditor('${id}', '${task.channel.key}')">
+        ${task.channel.icon} Editar ${task.channel.label}
+      </button>
+    `)
+    .join("");
+
   if (estado === "Para hacer") {
     return `
-      <button
-        class="quick"
-        onclick="quickStatus('${id}', 'Para entregar')"
-      >
-        🚗 Listo para entregar
+      <button class="quick" onclick="finishProduction('${id}')">
+        ✅ Sale de producción
       </button>
     `;
   }
 
   if (estado === "Para entregar") {
     return `
-      <button
-        class="quick"
-        onclick="quickStatus('${id}', 'Para cobrar')"
-      >
+      ${publishButtons}
+      <button class="quick" onclick="quickStatus('${id}', 'Para cobrar')">
         💵 Entregado · pasar a cobrar
       </button>
     `;
@@ -459,27 +873,19 @@ function actionButtons(id, estado) {
 
   if (estado === "Para cobrar") {
     return `
-      <button
-        class="quick"
-        onclick="quickStatus('${id}', 'Finalizado')"
-      >
+      <button class="quick" onclick="quickStatus('${id}', 'Finalizado')">
         ✅ Cobrado · finalizar
       </button>
 
-      <button
-        onclick="quickStatus('${id}', 'Deudor')"
-      >
-        ⚠️ Quedó debiendo
+      <button onclick="quickStatus('${id}', 'Deudor')">
+        ⚠️ Quedo debiendo
       </button>
     `;
   }
 
   if (estado === "Deudor") {
     return `
-      <button
-        class="quick"
-        onclick="quickStatus('${id}', 'Finalizado')"
-      >
+      <button class="quick" onclick="quickStatus('${id}', 'Finalizado')">
         ✅ Pago recibido · finalizar
       </button>
     `;
@@ -507,17 +913,61 @@ function openForm(order = null) {
       ? "Editar pedido"
       : "Nuevo pedido";
 
+  const unit = order?.precioUnitario || order?.precio || "";
+  const qty = order?.cantidad || (order ? 1 : "");
+  const total = order?.precioTotal || order?.precio || "";
+
   $("orderId").value = order?.id || "";
   $("pedido").value = order?.pedido || "";
   $("cliente").value = order?.cliente || "";
-  $("precio").value = order?.precio || "";
+  $("precioUnitario").value = unit;
+  $("cantidad").value = qty;
+  $("precioTotal").value = total;
   $("sena").value = order?.sena || "";
-  $("fechaCompromiso").value = order?.fechaCompromiso || "";
   $("estado").value =
     normalizedStatus(order?.estado) || DEFAULT_STATUS;
+  $("publicar").checked = publishPending(order);
   $("nota").value = order?.nota || "";
 
   dialog.showModal();
+}
+
+function openPurchaseForm() {
+  purchaseForm.reset();
+  $("purchaseDate").value = todayISO();
+  purchaseDialog.showModal();
+}
+
+function openManualPublicationForm() {
+  manualPublicationForm.reset();
+  $("manualInstagram").checked = true;
+  $("manualMercadoLibre").checked = true;
+  manualPublicationDialog.showModal();
+}
+
+function openPublicationForm(order, channel) {
+  publicationForm.reset();
+
+  $("publicationOrderId").value = order.id;
+  $("publicationChannel").value = channel.key;
+  $("publicationTitle").textContent = `Publicar en ${channel.label}`;
+  $("publicationProduct").textContent = order.pedido || "Pedido sin nombre";
+  $("publicationText").value = publicationText(order, channel);
+  $("publicationComment").value = publicationComment(order, channel);
+  $("publicationStatus").value = publicationDone(order, channel)
+    ? PUBLISH_DONE
+    : PUBLISH_PENDING;
+
+  publicationDialog.showModal();
+}
+
+function syncTotalFromInputs() {
+  const unit = numberValue($("precioUnitario").value);
+  const qty = numberValue($("cantidad").value);
+
+  if (unit > 0 && qty > 0) {
+    $("precioTotal").value = Math.round(unit * qty);
+  }
 }
 
 window.editOrder = function(id) {
@@ -525,6 +975,121 @@ window.editOrder = function(id) {
 
   if (order) {
     openForm(order);
+  }
+};
+
+window.openPublicationEditor = function(id, channelKey) {
+  const order = orders.find((o) => o.id === id);
+  const channel = PUBLISH_CHANNELS[channelKey];
+
+  if (order && channel) {
+    openPublicationForm(order, channel);
+  }
+};
+
+window.finishProduction = async function(id) {
+  const withPhotos = confirm(
+    "Cuando sale de Para hacer: ¿tambien hay que publicarlo porque sacaron fotos?\n\nAceptar: Para publicar\nCancelar: Solo para entregar"
+  );
+
+  const previous = orders;
+
+  orders = orders.map((o) =>
+    o.id === id
+      ? {
+          ...o,
+          estado: "Para entregar",
+          publicar: withPhotos ? PUBLISH_PENDING : "",
+          instagramEstado: withPhotos ? PUBLISH_PENDING : "",
+          instagramTexto: withPhotos ? publicationText(o, PUBLISH_CHANNELS.instagram) : o.instagramTexto,
+          mercadoLibreEstado: withPhotos ? PUBLISH_PENDING : "",
+          mercadoLibreTexto: withPhotos ? publicationText(o, PUBLISH_CHANNELS.mercadoLibre) : o.mercadoLibreTexto,
+          actualizado: new Date().toISOString()
+        }
+      : o
+  );
+
+  render();
+
+  try {
+    await api("updateStatus", { id, estado: "Para entregar" });
+    await api("savePublicationTask", {
+      task: {
+        id,
+        channel: "instagram",
+        estado: withPhotos ? PUBLISH_PENDING : "",
+        texto: orders.find((o) => o.id === id)?.pedido || "",
+        comentario: orders.find((o) => o.id === id)?.instagramComentario || ""
+      }
+    });
+    await api("savePublicationTask", {
+      task: {
+        id,
+        channel: "mercadoLibre",
+        estado: withPhotos ? PUBLISH_PENDING : "",
+        texto: orders.find((o) => o.id === id)?.pedido || "",
+        comentario: orders.find((o) => o.id === id)?.mercadoLibreComentario || ""
+      }
+    });
+    await api("updatePublish", { id, publicar: withPhotos ? PUBLISH_PENDING : "" });
+
+    statusMsg.textContent = withPhotos
+      ? "Pedido enviado a Para entregar y Para publicar."
+      : "Pedido enviado a Para entregar.";
+
+    statusMsg.className = "status-msg ok";
+
+    await loadData();
+  } catch (err) {
+    orders = previous;
+    render();
+    alert(err.message);
+  }
+};
+
+window.markChannelPublished = async function(id, channelKey) {
+  const channel = PUBLISH_CHANNELS[channelKey];
+  if (!channel) return;
+
+  const previous = orders;
+
+  orders = orders.map((o) =>
+    o.id === id
+      ? {
+          ...o,
+          [channel.statusField]: PUBLISH_DONE,
+          actualizado: new Date().toISOString()
+        }
+      : o
+  );
+
+  render();
+
+  try {
+    const order = orders.find((o) => o.id === id);
+
+    await api("savePublicationTask", {
+      task: {
+        id,
+        channel: channel.key,
+        estado: PUBLISH_DONE,
+        texto: publicationText(order, channel),
+        comentario: publicationComment(order, channel)
+      }
+    });
+
+    if (!publishPending(order)) {
+      await api("updatePublish", { id, publicar: PUBLISH_DONE });
+    }
+
+    statusMsg.textContent = `${channel.label} marcado como publicado.`;
+    statusMsg.className = "status-msg ok";
+
+    await loadData();
+  } catch (err) {
+    orders = previous;
+    render();
+    alert(err.message);
   }
 };
 
@@ -554,7 +1119,7 @@ window.quickStatus = async function(id, estado) {
 
     statusMsg.className = "status-msg ok";
 
-    await loadOrders();
+    await loadData();
   } catch (err) {
     orders = previous;
     render();
@@ -579,16 +1144,40 @@ form.addEventListener("submit", async (e) => {
 
   const id = $("orderId").value || uid();
   const existing = orders.find((o) => o.id === id);
+  const unit = numberValue($("precioUnitario").value);
+  const qty = numberValue($("cantidad").value) || 1;
+  const total = numberValue($("precioTotal").value) || (unit * qty);
 
   const order = {
     id,
     fechaCarga: existing?.fechaCarga || todayISO(),
     pedido: $("pedido").value.trim(),
     cliente: $("cliente").value.trim(),
-    precio: $("precio").value,
+    precioUnitario: unit || "",
+    cantidad: qty || "",
+    precioTotal: total || "",
+    precio: total || "",
     sena: $("sena").value,
     estado: $("estado").value || DEFAULT_STATUS,
-    fechaCompromiso: $("fechaCompromiso").value,
+    publicar: $("publicar").checked
+      ? PUBLISH_PENDING
+      : existing?.publicar === PUBLISH_DONE
+        ? PUBLISH_DONE
+        : "",
+    instagramEstado: $("publicar").checked
+      ? (existing?.instagramEstado === PUBLISH_DONE ? PUBLISH_DONE : PUBLISH_PENDING)
+      : existing?.instagramEstado === PUBLISH_DONE
+        ? PUBLISH_DONE
+        : "",
+    instagramTexto: existing?.instagramTexto || $("pedido").value.trim(),
+    instagramComentario: existing?.instagramComentario || "",
+    mercadoLibreEstado: $("publicar").checked
+      ? (existing?.mercadoLibreEstado === PUBLISH_DONE ? PUBLISH_DONE : PUBLISH_PENDING)
+      : existing?.mercadoLibreEstado === PUBLISH_DONE
+        ? PUBLISH_DONE
+        : "",
+    mercadoLibreTexto: existing?.mercadoLibreTexto || $("pedido").value.trim(),
+    mercadoLibreComentario: existing?.mercadoLibreComentario || "",
     nota: $("nota").value.trim(),
     actualizado: new Date().toISOString()
   };
@@ -612,7 +1201,7 @@ form.addEventListener("submit", async (e) => {
 
     statusMsg.className = "status-msg ok";
 
-    await loadOrders();
+    await loadData();
 
     currentFilter =
       HIDDEN_STATUSES.includes(order.estado)
@@ -639,15 +1228,226 @@ form.addEventListener("submit", async (e) => {
   }
 });
 
+purchaseForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  if (savingPurchase) {
+    return;
+  }
+
+  savingPurchase = true;
+
+  const submitBtn =
+    purchaseForm.querySelector('button[type="submit"]');
+
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Guardando...";
+
+  const purchase = {
+    id: uid("COM"),
+    fecha: $("purchaseDate").value || todayISO(),
+    concepto: $("purchaseConcept").value.trim(),
+    monto: $("purchaseAmount").value,
+    nota: $("purchaseNote").value.trim(),
+    actualizado: new Date().toISOString()
+  };
+
+  if (!purchase.concepto || !purchase.monto) {
+    savingPurchase = false;
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Guardar compra";
+    return;
+  }
+
+  try {
+    await api("savePurchase", { purchase });
+    purchaseDialog.close();
+    statusMsg.textContent = "Compra guardada en Google Sheets.";
+    statusMsg.className = "status-msg ok";
+    await loadData();
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    savingPurchase = false;
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Guardar compra";
+  }
+});
+
+manualPublicationForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  if (savingManualPublication) {
+    return;
+  }
+
+  const instagram = $("manualInstagram").checked;
+  const mercadoLibre = $("manualMercadoLibre").checked;
+
+  if (!instagram && !mercadoLibre) {
+    alert("Elegí Instagram, Mercado Libre o ambos.");
+    return;
+  }
+
+  savingManualPublication = true;
+
+  const submitBtn = manualPublicationForm.querySelector('button[type="submit"]');
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Creando...";
+
+  const text = $("manualPublicationText").value.trim();
+  const comment = $("manualPublicationComment").value.trim();
+  const id = uid("PUB");
+
+  const order = {
+    id,
+    fechaCarga: todayISO(),
+    pedido: text,
+    cliente: $("manualPublicationClient").value.trim(),
+    precioUnitario: "",
+    cantidad: 1,
+    precioTotal: "",
+    precio: "",
+    sena: "",
+    estado: "Para entregar",
+    publicar: PUBLISH_PENDING,
+    instagramEstado: instagram ? PUBLISH_PENDING : "",
+    instagramTexto: instagram ? text : "",
+    instagramComentario: instagram ? comment : "",
+    mercadoLibreEstado: mercadoLibre ? PUBLISH_PENDING : "",
+    mercadoLibreTexto: mercadoLibre ? text : "",
+    mercadoLibreComentario: mercadoLibre ? comment : "",
+    nota: comment,
+    actualizado: new Date().toISOString()
+  };
+
+  if (!order.pedido) {
+    savingManualPublication = false;
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Crear publicación";
+    return;
+  }
+
+  try {
+    await api("save", { order });
+    manualPublicationDialog.close();
+    statusMsg.textContent = "Publicación manual creada.";
+    statusMsg.className = "status-msg ok";
+    await loadData();
+    currentView = "pedidos";
+    currentFilter = "Para publicar";
+
+    document
+      .querySelectorAll(".tab")
+      .forEach((t) =>
+        t.classList.toggle(
+          "active",
+          t.dataset.filter === currentFilter
+        )
+      );
+
+    render();
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    savingManualPublication = false;
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Crear publicación";
+  }
+});
+
+publicationForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  const id = $("publicationOrderId").value;
+  const channel = PUBLISH_CHANNELS[$("publicationChannel").value];
+
+  if (!id || !channel) {
+    return;
+  }
+
+  const status = $("publicationStatus").value;
+  const text = $("publicationText").value.trim();
+  const comment = $("publicationComment").value.trim();
+  const previous = orders;
+
+  orders = orders.map((o) =>
+    o.id === id
+      ? {
+          ...o,
+          [channel.statusField]: status,
+          [channel.textField]: text,
+          [channel.commentField]: comment,
+          actualizado: new Date().toISOString()
+        }
+      : o
+  );
+
+  render();
+
+  const submitBtn = publicationForm.querySelector('button[type="submit"]');
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Guardando...";
+
+  try {
+    await api("savePublicationTask", {
+      task: {
+        id,
+        channel: channel.key,
+        estado: status,
+        texto: text,
+        comentario: comment
+      }
+    });
+
+    const order = orders.find((o) => o.id === id);
+
+    await api("updatePublish", {
+      id,
+      publicar: publishPending(order)
+        ? PUBLISH_PENDING
+        : PUBLISH_DONE
+    });
+
+    publicationDialog.close();
+    statusMsg.textContent = `Publicacion de ${channel.label} guardada.`;
+    statusMsg.className = "status-msg ok";
+    await loadData();
+  } catch (err) {
+    orders = previous;
+    render();
+    alert(err.message);
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Guardar publicación";
+  }
+});
+
 $("newOrderBtn").addEventListener("click", () => {
   openForm();
 });
+
+$("newPurchaseBtn").addEventListener("click", openPurchaseForm);
+
+$("newManualPublicationBtn").addEventListener("click", openManualPublicationForm);
 
 $("closeDialogBtn").addEventListener("click", () => {
   dialog.close();
 });
 
-$("syncBtn").addEventListener("click", loadOrders);
+$("closePurchaseDialogBtn").addEventListener("click", () => {
+  purchaseDialog.close();
+});
+
+$("closePublicationDialogBtn").addEventListener("click", () => {
+  publicationDialog.close();
+});
+
+$("closeManualPublicationDialogBtn").addEventListener("click", () => {
+  manualPublicationDialog.close();
+});
+
+$("syncBtn").addEventListener("click", loadData);
 
 $("searchInput").addEventListener("input", render);
 
@@ -655,6 +1455,9 @@ $("sortSelect").addEventListener("change", (e) => {
   currentSort = e.target.value;
   render();
 });
+
+$("precioUnitario").addEventListener("input", syncTotalFromInputs);
+$("cantidad").addEventListener("input", syncTotalFromInputs);
 
 document
   .querySelectorAll(".tab")
@@ -674,4 +1477,13 @@ document
     });
   });
 
-loadOrders();
+document
+  .querySelectorAll(".view-tab")
+  .forEach((tab) => {
+    tab.addEventListener("click", () => {
+      currentView = tab.dataset.view;
+      renderView();
+    });
+  });
+
+loadData();
