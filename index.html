@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>3D Backdraft · Pedidos</title>
-  <link rel="stylesheet" href="styles.css?v=6" />
+  <link rel="stylesheet" href="styles.css?v=7" />
 </head>
 
 <body>
@@ -91,6 +91,20 @@
             <h2>Cobros, gastos y pendientes</h2>
           </div>
           <button class="secondary compact" type="button" onclick="document.getElementById('newPurchaseBtn').click()">+ Compra</button>
+        </div>
+
+        <div class="wallet-filters">
+          <label>
+            Desde
+            <input id="walletDateFrom" type="date" />
+          </label>
+
+          <label>
+            Hasta
+            <input id="walletDateTo" type="date" />
+          </label>
+
+          <button id="clearWalletDatesBtn" class="ghost" type="button">Todo</button>
         </div>
 
         <section class="metrics wallet-metrics" id="metrics"></section>
@@ -204,7 +218,7 @@
         />
       </label>
 
-      <label>
+      <label id="stateField">
         Estado
         <select id="estado">
           <option>Para hacer</option>
@@ -215,7 +229,7 @@
         </select>
       </label>
 
-      <label class="check-row">
+      <label id="publishField" class="check-row">
         <input id="publicar" type="checkbox" />
         <span>Pendiente de publicar</span>
       </label>
@@ -414,7 +428,7 @@
 
   </dialog>
 
-  <script src="app.js?v=6"></script>
+  <script src="app.js?v=7"></script>
 
 </body>
 </html>

@@ -11,6 +11,8 @@ App simple para manejar pedidos desde celular o computadora, conectada a Google 
 - Deudor
 - Finalizado
 
+Todo pedido nuevo entra siempre en **Para hacer**.
+
 Cuando un pedido sale de **Para hacer**, la app pregunta si se sacaron fotos:
 
 - Si aceptás, el pedido queda en **Para entregar** y se crean dos tareas en **Para publicar**:
@@ -75,6 +77,8 @@ Los estados usados son:
 
 En la vista **Para publicar** también se pueden crear publicaciones manuales con el botón **+ Publicación manual**. Al crearla, la app pregunta si va para Instagram, Mercado Libre o ambos. Si elegís ambos, se crean dos tareas pendientes resumidas.
 
+Las tarjetas de **Para publicar** quedan minimizadas por defecto. El título principal es el producto; el canal se ve por ícono/etiqueta y el detalle aparece al abrir la tarjeta.
+
 ## Movimientos
 
 La vista **Billetera** incluye un historial de movimientos. El Apps Script registra automáticamente:
@@ -96,6 +100,8 @@ ID, Fecha, Tipo, Detalle, Monto, Referencia, Pedido ID, Actualizado
 ```
 
 Si el Apps Script todavía no fue actualizado, la app arma una lista temporal desde compras y pedidos, pero para que quede guardado como historial real hay que desplegar `apps-script.gs`.
+
+Billetera permite filtrar por fecha desde/hasta. Por defecto muestra todo.
 
 ## URL de Apps Script cargada en `app.js`
 
