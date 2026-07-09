@@ -173,6 +173,41 @@ function manualSales() {
   ).sort((a, b) => movementDate(b).localeCompare(movementDate(a)));
 }
 
+function groupedManualSales() {
+  const groups = new Map();
+
+  manualSales().forEach((movement) => {
+    const key = movement.pedidoId || movement.id;
+    const group = groups.get(key) || {
+      id: key,
+      fecha: movement.fecha,
+      detalle: movement.detalle,
+      referencia: movement.referencia,
+      total: 0,
+      iri: null,
+      mama: null,
+      items: []
+    };
+
+    group.fecha = movementDate(movement) > movementDate(group) ? movement.fecha : group.fecha;
+    group.total += movementAmount(movement);
+    group.items.push(movement);
+
+    if (normalizeWallet(movement.billetera) === "iri") {
+      group.iri = movement;
+    }
+
+    if (normalizeWallet(movement.billetera) === "mama") {
+      group.mama = movement;
+    }
+
+    groups.set(key, group);
+  });
+
+  return [...groups.values()]
+    .sort((a, b) => movementDate(b).localeCompare(movementDate(a)));
+}
+
 function publishPending(order) {
   if (!order) return false;
   return publicationTasks(order).some((task) => task.pending);
@@ -669,25 +704,22 @@ function renderMovements() {
 }
 
 function renderSales() {
-  const data = manualSales();
+  const data = groupedManualSales();
 
   salesList.innerHTML = data.length
-    ? data.map((m) => {
-      const wallet = WALLETS[normalizeWallet(m.billetera)] || WALLETS.iri;
-
-      return `
+    ? data.map((sale) => `
         <article class="movement-item in">
           <div>
-            <strong>${escapeHTML(m.detalle || "Venta sin detalle")}</strong>
-            <span>${money(m.monto)} Â· ${escapeHTML(wallet.label)}</span>
-            <small>${escapeHTML(m.fecha || "")}${m.referencia ? ` Â· ${escapeHTML(m.referencia)}` : ""}</small>
+            <strong>${escapeHTML(sale.detalle || "Venta sin detalle")}</strong>
+            <span>Total: ${money(sale.total)} · Iri: ${money(sale.iri?.monto)} · Mama: ${money(sale.mama?.monto)}</span>
+            <small>${escapeHTML(sale.fecha || "")}${sale.referencia ? ` · ${escapeHTML(sale.referencia)}` : ""}</small>
           </div>
           <div class="item-actions">
-            <button class="ghost mini-btn" type="button" onclick="editSale('${m.id}')">Editar</button>
+            ${sale.iri ? `<button class="ghost mini-btn" type="button" onclick="editSale('${sale.iri.id}')">Editar Iri</button>` : ""}
+            ${sale.mama ? `<button class="ghost mini-btn" type="button" onclick="editSale('${sale.mama.id}')">Editar mama</button>` : ""}
           </div>
         </article>
-      `;
-    }).join("")
+      `).join("")
     : `<div class="empty compact-empty">Todavia no hay ventas sueltas cargadas.</div>`;
 }
 
@@ -1125,7 +1157,12 @@ function openSaleForm(movement = null) {
   $("saleWallet").value = movement ? normalizeWallet(movement.billetera) : currentWallet;
   $("saleDetail").value = movement?.detalle || "";
   $("saleAmount").value = movement ? Math.abs(numberValue(movement.monto)) : "";
+  $("saleShareIri").value = "";
+  $("saleShareMama").value = "";
   $("saleReference").value = movement?.referencia || "";
+  $("saleWallet").closest("label").classList.toggle("hidden", !movement);
+  $("saleSplitFields").classList.toggle("hidden", !!movement);
+  $("saleTotalField").querySelector("span")?.remove();
   saleDialog.showModal();
 }
 
@@ -1502,19 +1539,15 @@ saleForm.addEventListener("submit", async (e) => {
   submitBtn.disabled = true;
   submitBtn.textContent = "Guardando...";
 
-  const movement = {
-    id: $("saleId").value || uid("VEN"),
-    fecha: $("saleDate").value || todayISO(),
-    tipo: $("saleType").value || "Venta",
-    detalle: $("saleDetail").value.trim(),
-    monto: numberValue($("saleAmount").value),
-    billetera: $("saleWallet").value || currentWallet,
-    referencia: $("saleReference").value.trim(),
-    pedidoId: $("saleOrderId").value,
-    actualizado: new Date().toISOString()
-  };
+  const existingId = $("saleId").value;
+  const total = numberValue($("saleAmount").value);
+  const detail = $("saleDetail").value.trim();
+  const reference = $("saleReference").value.trim();
+  const date = $("saleDate").value || todayISO();
+  const orderId = $("saleOrderId").value;
+  const type = $("saleType").value || "Venta";
 
-  if (!movement.detalle || !movement.monto) {
+  if (!detail || !total) {
     savingSale = false;
     submitBtn.disabled = false;
     submitBtn.textContent = "Guardar venta";
@@ -1522,7 +1555,54 @@ saleForm.addEventListener("submit", async (e) => {
   }
 
   try {
-    await api("saveMovement", { movement });
+    if (existingId) {
+      await api("saveMovement", {
+        movement: {
+          id: existingId,
+          fecha: date,
+          tipo: type,
+          detalle: detail,
+          monto: total,
+          billetera: $("saleWallet").value || currentWallet,
+          referencia: reference,
+          pedidoId: orderId,
+          actualizado: new Date().toISOString()
+        }
+      });
+    } else {
+      const saleId = uid("VEN");
+      const shareIri = numberValue($("saleShareIri").value) || Math.round(total * 0.5);
+      const shareMama = numberValue($("saleShareMama").value) || Math.max(total - shareIri, 0);
+
+      await api("saveMovement", {
+        movement: {
+          id: `${saleId}-IRI`,
+          fecha: date,
+          tipo: "Venta",
+          detalle: detail,
+          monto: shareIri,
+          billetera: "iri",
+          referencia: reference,
+          pedidoId: saleId,
+          actualizado: new Date().toISOString()
+        }
+      });
+
+      await api("saveMovement", {
+        movement: {
+          id: `${saleId}-MAMA`,
+          fecha: date,
+          tipo: "Venta",
+          detalle: detail,
+          monto: shareMama,
+          billetera: "mama",
+          referencia: reference,
+          pedidoId: saleId,
+          actualizado: new Date().toISOString()
+        }
+      });
+    }
+
     saleDialog.close();
     statusMsg.textContent = "Ingreso guardado en Google Sheets.";
     statusMsg.className = "status-msg ok";
@@ -1757,6 +1837,19 @@ $("precioTotal").addEventListener("input", () => {
 
   if (!$("shareMama").value) {
     $("shareMama").value = Math.round(total * 0.5);
+  }
+});
+
+$("saleAmount").addEventListener("input", () => {
+  const total = numberValue($("saleAmount").value);
+  if (!total || $("saleId").value) return;
+
+  if (!$("saleShareIri").value) {
+    $("saleShareIri").value = Math.round(total * 0.5);
+  }
+
+  if (!$("saleShareMama").value) {
+    $("saleShareMama").value = Math.max(total - numberValue($("saleShareIri").value), 0);
   }
 });
 

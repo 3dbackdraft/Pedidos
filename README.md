@@ -41,15 +41,16 @@ Cada tarea puede ser para Instagram, Mercado Libre o ambos. Al marcarla como pub
 
 La vista **Ventas** permite cargar ingresos que no nacen de un pedido.
 
-Cada venta suelta se guarda como movimiento de tipo `Venta`, con:
+Cada venta suelta pide el total y el reparto:
 
 - Fecha
-- Billetera
 - Detalle
-- Monto recibido
+- Total venta
+- Para Iri
+- Para mama
 - Referencia
 
-Estas ventas aparecen tambien en el historial de ingresos de la billetera correspondiente.
+Por defecto propone 50% y 50%. Al guardar, crea dos movimientos de tipo `Venta`: uno para `iri` y otro para `mama`. Estas ventas aparecen tambien en el historial de ingresos de la billetera correspondiente y se pueden editar por separado.
 
 ## Billeteras
 

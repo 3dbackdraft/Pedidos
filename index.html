@@ -468,8 +468,8 @@
         />
       </label>
 
-      <label>
-        Monto recibido *
+      <label id="saleTotalField">
+        Total venta *
         <input
           id="saleAmount"
           type="number"
@@ -479,6 +479,30 @@
           required
         />
       </label>
+
+      <div id="saleSplitFields" class="grid-2">
+        <label>
+          Para Iri
+          <input
+            id="saleShareIri"
+            type="number"
+            min="0"
+            step="1"
+            placeholder="50% automatico"
+          />
+        </label>
+
+        <label>
+          Para mama
+          <input
+            id="saleShareMama"
+            type="number"
+            min="0"
+            step="1"
+            placeholder="50% automatico"
+          />
+        </label>
+      </div>
 
       <label>
         Referencia
