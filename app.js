@@ -4,6 +4,18 @@ const DEFAULT_STATUS = "Para hacer";
 const HIDDEN_STATUSES = ["Finalizado"];
 const PUBLISH_PENDING = "Pendiente";
 const PUBLISH_DONE = "Publicado";
+const WALLETS = {
+  iri: {
+    key: "iri",
+    label: "Billetera Iri",
+    saleField: "shareIri"
+  },
+  mama: {
+    key: "mama",
+    label: "Billetera mama",
+    saleField: "shareMama"
+  }
+};
 const PUBLISH_CHANNELS = {
   instagram: {
     key: "instagram",
@@ -29,6 +41,7 @@ let movements = [];
 let currentFilter = "Para hacer";
 let currentSort = "nuevos";
 let currentView = "pedidos";
+let currentWallet = "iri";
 let walletDateFrom = "";
 let walletDateTo = "";
 let savingOrder = false;
@@ -47,6 +60,7 @@ const publicationDialog = $("publicationDialog");
 const publicationForm = $("publicationForm");
 const manualPublicationDialog = $("manualPublicationDialog");
 const manualPublicationForm = $("manualPublicationForm");
+const publicationList = $("publicationList");
 
 function uid(prefix = "PED") {
   return prefix + "-" + new Date()
@@ -102,6 +116,22 @@ function totalPrice(order) {
   if (legacyPrice > 0) return legacyPrice;
 
   return numberValue(order.precioUnitario) * numberValue(order.cantidad);
+}
+
+function defaultShare(order) {
+  return Math.round(totalPrice(order) * 0.5);
+}
+
+function walletShare(order, walletKey) {
+  const wallet = WALLETS[walletKey] || WALLETS.iri;
+  const explicit = numberValue(order?.[wallet.saleField]);
+
+  return explicit > 0 ? explicit : defaultShare(order);
+}
+
+function normalizeWallet(value) {
+  const raw = String(value || "").toLowerCase();
+  return raw.includes("mama") || raw.includes("mam") ? "mama" : "iri";
 }
 
 function publishPending(order) {
@@ -174,24 +204,38 @@ function buildFallbackMovements() {
     tipo: "Compra",
     detalle: p.concepto || "Compra",
     monto: numberValue(p.monto) * -1,
-    referencia: p.nota || ""
+    referencia: p.nota || "",
+    billetera: normalizeWallet(p.billetera)
   }));
 
   const orderMovements = orders
     .filter((o) => ["Finalizado", "Deudor"].includes(normalizedStatus(o.estado)))
-    .map((o) => {
+    .flatMap((o) => {
       const estado = normalizedStatus(o.estado);
       const total = totalPrice(o);
       const debt = Math.max(total - numberValue(o.sena), 0);
 
-      return {
+      if (estado === "Finalizado") {
+        return Object.keys(WALLETS).map((walletKey) => ({
+          id: `${o.id}-${estado}-${walletKey}`,
+          fecha: o.actualizado || o.fechaCarga || "",
+          tipo: "Cobro",
+          detalle: o.pedido || "Pedido",
+          monto: walletShare(o, walletKey),
+          referencia: o.cliente || "",
+          billetera: walletKey
+        }));
+      }
+
+      return [{
         id: `${o.id}-${estado}`,
         fecha: o.actualizado || o.fechaCarga || "",
-        tipo: estado === "Finalizado" ? "Cobro" : "Deudor",
+        tipo: "Deudor",
         detalle: o.pedido || "Pedido",
-        monto: estado === "Finalizado" ? total : debt,
-        referencia: o.cliente || ""
-      };
+        monto: debt,
+        referencia: o.cliente || "",
+        billetera: ""
+      }];
     });
 
   return [...purchaseMovements, ...orderMovements]
@@ -225,6 +269,8 @@ function compactOrder(order) {
     precioTotal: order.precioTotal,
     precio: order.precio,
     sena: order.sena,
+    shareIri: order.shareIri,
+    shareMama: order.shareMama,
     estado: order.estado,
     publicar: order.publicar,
     instagramEstado: order.instagramEstado,
@@ -360,12 +406,20 @@ async function loadData() {
           : o.mercadoLibreEstado,
         instagramTexto: o.instagramTexto || o.pedido || "",
         mercadoLibreTexto: o.mercadoLibreTexto || o.pedido || "",
+        shareIri: o.shareIri || defaultShare(o),
+        shareMama: o.shareMama || defaultShare(o),
         publicar: legacyPending ? PUBLISH_PENDING : o.publicar
       };
     });
 
-    purchases = result.purchases || [];
-    movements = result.movements || [];
+    purchases = (result.purchases || []).map((p) => ({
+      ...p,
+      billetera: normalizeWallet(p.billetera)
+    }));
+    movements = (result.movements || []).map((m) => ({
+      ...m,
+      billetera: m.billetera ? normalizeWallet(m.billetera) : ""
+    }));
 
     render();
 
@@ -436,7 +490,11 @@ function renderSummary() {
 
 function renderMetrics() {
   const scopedOrders = filterByWalletDate(orders, movementDate);
-  const scopedPurchases = filterByWalletDate(purchases, (p) => p.fecha || p.actualizado);
+  const scopedPurchases = filterByWalletDate(
+    purchases.filter((p) => normalizeWallet(p.billetera) === currentWallet),
+    (p) => p.fecha || p.actualizado
+  );
+  const wallet = WALLETS[currentWallet] || WALLETS.iri;
 
   const sold = scopedOrders.filter((o) => normalizedStatus(o.estado) === "Finalizado");
   const toCollect = scopedOrders.filter((o) => normalizedStatus(o.estado) === "Para cobrar");
@@ -444,26 +502,25 @@ function renderMetrics() {
   const toDeliver = scopedOrders.filter((o) => normalizedStatus(o.estado) === "Para entregar");
   const inProduction = scopedOrders.filter((o) => normalizedStatus(o.estado) === "Para hacer");
 
-  const salesTotal = sold.reduce((sum, o) => sum + totalPrice(o), 0);
+  const salesTotal = sold.reduce((sum, o) => sum + walletShare(o, wallet.key), 0);
   const toCollectTotal = toCollect.reduce((sum, o) => sum + Math.max(totalPrice(o) - numberValue(o.sena), 0), 0);
   const debtorsTotal = debtors.reduce((sum, o) => sum + Math.max(totalPrice(o) - numberValue(o.sena), 0), 0);
   const toDeliverTotal = toDeliver.reduce((sum, o) => sum + Math.max(totalPrice(o) - numberValue(o.sena), 0), 0);
   const inProductionTotal = inProduction.reduce((sum, o) => sum + totalPrice(o), 0);
-  const profit = salesTotal * 0.5;
   const purchasesTotal = scopedPurchases.reduce((sum, p) => sum + numberValue(p.monto), 0);
-  const balance = profit - purchasesTotal;
+  const balance = salesTotal - purchasesTotal;
   const receivableTotal = toCollectTotal + debtorsTotal;
   const pipelineTotal = receivableTotal + toDeliverTotal + inProductionTotal;
 
   $("metrics").innerHTML = `
     <div class="metric-card">
-      <span>Ingresó cobrado</span>
+      <span>Ventas asignadas</span>
       <strong>${money(salesTotal)}</strong>
     </div>
 
     <div class="metric-card">
-      <span>Ganancia 50%</span>
-      <strong>${money(profit)}</strong>
+      <span>Billetera</span>
+      <strong>${wallet.label}</strong>
     </div>
 
     <div class="metric-card">
@@ -505,7 +562,7 @@ function renderMetrics() {
   $("walletNotes").innerHTML = `
     <article class="wallet-note">
       <strong>Disponible real</strong>
-      <span>Ganancia cobrada menos compras: ${money(balance)}.</span>
+      <span>Ventas asignadas menos compras: ${money(balance)}.</span>
     </article>
 
     <article class="wallet-note">
@@ -521,7 +578,10 @@ function renderMetrics() {
 }
 
 function renderPurchases() {
-  const latest = filterByWalletDate([...purchases], (p) => p.fecha || p.actualizado)
+  const latest = filterByWalletDate(
+    purchases.filter((p) => normalizeWallet(p.billetera) === currentWallet),
+    (p) => p.fecha || p.actualizado
+  )
     .sort((a, b) => (b.fecha || "").localeCompare(a.fecha || ""))
     .slice(0, 5);
 
@@ -540,7 +600,8 @@ function renderPurchases() {
 
 function renderMovements() {
   const data = filterByWalletDate(
-    movements.length ? movements : buildFallbackMovements(),
+    (movements.length ? movements : buildFallbackMovements())
+      .filter((m) => !m.billetera || normalizeWallet(m.billetera) === currentWallet),
     movementDate
   )
     .sort((a, b) => movementDate(b).localeCompare(movementDate(a)))
@@ -611,6 +672,7 @@ function render() {
   renderMetrics();
   renderPurchases();
   renderMovements();
+  renderPublicationTasks();
   renderView();
 
   const q = $("searchInput")
@@ -638,25 +700,6 @@ function render() {
 
   data = sortOrders(data);
 
-  if (currentFilter === "Para publicar") {
-    const tasks = data.flatMap((order) =>
-      publicationTasks(order).filter((task) => task.pending)
-    );
-
-    if (!tasks.length) {
-      list.innerHTML = `
-        <div class="empty">
-          No hay publicaciones pendientes.
-        </div>
-      `;
-
-      return;
-    }
-
-    list.innerHTML = tasks.map(publicationTaskCard).join("");
-    return;
-  }
-
   if (!data.length) {
     list.innerHTML = `
       <div class="empty">
@@ -670,13 +713,40 @@ function render() {
   list.innerHTML = data.map(orderCard).join("");
 }
 
+function renderPublicationTasks() {
+  const q = $("searchInput")
+    .value
+    .toLowerCase()
+    .trim();
+
+  let data = activeOrders();
+
+  if (q) {
+    data = data.filter((o) =>
+      `${o.pedido} ${o.cliente} ${o.nota}`
+        .toLowerCase()
+        .includes(q)
+    );
+  }
+
+  const tasks = data.flatMap((order) =>
+    publicationTasks(order).filter((task) => task.pending)
+  );
+
+  publicationList.innerHTML = tasks.length
+    ? tasks.map(publicationTaskCard).join("")
+    : `
+      <div class="empty">
+        No hay publicaciones pendientes.
+      </div>
+    `;
+}
+
 function renderView() {
   $("ordersView").classList.toggle("hidden", currentView !== "pedidos");
-  $("walletView").classList.toggle("hidden", currentView !== "billetera");
-  $("publicationTools").classList.toggle(
-    "hidden",
-    currentView !== "pedidos" || currentFilter !== "Para publicar"
-  );
+  $("publicationView").classList.toggle("hidden", currentView !== "publicar");
+  $("walletView").classList.toggle("hidden", !currentView.startsWith("billetera"));
+  $("walletTitle").textContent = (WALLETS[currentWallet] || WALLETS.iri).label;
 
   document
     .querySelectorAll(".view-tab")
@@ -821,6 +891,8 @@ function orderCard(o) {
           <span>Unitario: ${money(o.precioUnitario || total)}</span>
           <span>Cantidad: ${escapeHTML(o.cantidad || 1)}</span>
           <span>Total: ${money(total)}</span>
+          <span>Iri: ${money(walletShare(o, "iri"))}</span>
+          <span>Mama: ${money(walletShare(o, "mama"))}</span>
 
           ${
             o.sena
@@ -952,6 +1024,8 @@ function openForm(order = null) {
   $("cantidad").value = qty;
   $("precioTotal").value = total;
   $("sena").value = order?.sena || "";
+  $("shareIri").value = order ? (order.shareIri || defaultShare(order)) : "";
+  $("shareMama").value = order ? (order.shareMama || defaultShare(order)) : "";
   $("estado").value =
     normalizedStatus(order?.estado) || DEFAULT_STATUS;
   $("publicar").checked = publishPending(order);
@@ -965,6 +1039,7 @@ function openForm(order = null) {
 function openPurchaseForm() {
   purchaseForm.reset();
   $("purchaseDate").value = todayISO();
+  $("purchaseWallet").value = currentWallet;
   purchaseDialog.showModal();
 }
 
@@ -996,7 +1071,16 @@ function syncTotalFromInputs() {
   const qty = numberValue($("cantidad").value);
 
   if (unit > 0 && qty > 0) {
-    $("precioTotal").value = Math.round(unit * qty);
+    const total = Math.round(unit * qty);
+    $("precioTotal").value = total;
+
+    if (!$("shareIri").value) {
+      $("shareIri").value = Math.round(total * 0.5);
+    }
+
+    if (!$("shareMama").value) {
+      $("shareMama").value = Math.round(total * 0.5);
+    }
   }
 }
 
@@ -1189,6 +1273,8 @@ form.addEventListener("submit", async (e) => {
     precioTotal: total || "",
     precio: total || "",
     sena: $("sena").value,
+    shareIri: numberValue($("shareIri").value) || Math.round(total * 0.5),
+    shareMama: numberValue($("shareMama").value) || Math.round(total * 0.5),
     estado: isNewOrder ? DEFAULT_STATUS : ($("estado").value || DEFAULT_STATUS),
     publicar: isNewOrder ? "" : (existing?.publicar || ""),
     instagramEstado: isNewOrder
@@ -1269,6 +1355,7 @@ purchaseForm.addEventListener("submit", async (e) => {
   const purchase = {
     id: uid("COM"),
     fecha: $("purchaseDate").value || todayISO(),
+    billetera: $("purchaseWallet").value || currentWallet,
     concepto: $("purchaseConcept").value.trim(),
     monto: $("purchaseAmount").value,
     nota: $("purchaseNote").value.trim(),
@@ -1357,8 +1444,7 @@ manualPublicationForm.addEventListener("submit", async (e) => {
     statusMsg.textContent = "Publicación manual creada.";
     statusMsg.className = "status-msg ok";
     await loadData();
-    currentView = "pedidos";
-    currentFilter = "Para publicar";
+    currentView = "publicar";
 
     document
       .querySelectorAll(".tab")
@@ -1499,6 +1585,18 @@ $("clearWalletDatesBtn").addEventListener("click", () => {
 
 $("precioUnitario").addEventListener("input", syncTotalFromInputs);
 $("cantidad").addEventListener("input", syncTotalFromInputs);
+$("precioTotal").addEventListener("input", () => {
+  const total = numberValue($("precioTotal").value);
+  if (!total) return;
+
+  if (!$("shareIri").value) {
+    $("shareIri").value = Math.round(total * 0.5);
+  }
+
+  if (!$("shareMama").value) {
+    $("shareMama").value = Math.round(total * 0.5);
+  }
+});
 
 document
   .querySelectorAll(".tab")
@@ -1523,7 +1621,16 @@ document
   .forEach((tab) => {
     tab.addEventListener("click", () => {
       currentView = tab.dataset.view;
-      renderView();
+
+      if (currentView === "billetera-iri") {
+        currentWallet = "iri";
+      }
+
+      if (currentView === "billetera-mama") {
+        currentWallet = "mama";
+      }
+
+      render();
     });
   });
 

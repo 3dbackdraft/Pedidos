@@ -13,6 +13,8 @@ const HEADERS = [
   'Precio total',
   'Precio',
   'Seña',
+  'Parte Iri',
+  'Parte mama',
   'Estado',
   'Publicar',
   'Instagram estado',
@@ -29,6 +31,7 @@ const HEADERS = [
 const PURCHASE_HEADERS = [
   'ID',
   'Fecha',
+  'Billetera',
   'Concepto',
   'Monto',
   'Nota',
@@ -41,6 +44,7 @@ const MOVEMENT_HEADERS = [
   'Tipo',
   'Detalle',
   'Monto',
+  'Billetera',
   'Referencia',
   'Pedido ID',
   'Actualizado'
@@ -200,6 +204,8 @@ function readOrders_() {
       precioTotal: precioTotal,
       precio: precioTotal,
       sena: valueBy_(r, map, 'Seña'),
+      shareIri: valueBy_(r, map, 'Parte Iri'),
+      shareMama: valueBy_(r, map, 'Parte mama'),
       estado: estadoHoja === 'Para publicar' ? 'Para entregar' : estadoHoja,
       publicar: estadoHoja === 'Para publicar' ? 'Pendiente' : publicarHoja,
       instagramEstado: valueBy_(r, map, 'Instagram estado') || (legacyPending ? 'Pendiente' : ''),
@@ -228,6 +234,7 @@ function readPurchases_() {
   return values.filter(r => valueBy_(r, map, 'ID')).map(r => ({
     id: valueBy_(r, map, 'ID'),
     fecha: formatDate_(valueBy_(r, map, 'Fecha')),
+    billetera: valueBy_(r, map, 'Billetera') || 'iri',
     concepto: valueBy_(r, map, 'Concepto'),
     monto: valueBy_(r, map, 'Monto'),
     nota: valueBy_(r, map, 'Nota'),
@@ -251,6 +258,7 @@ function readMovements_() {
     tipo: valueBy_(r, map, 'Tipo'),
     detalle: valueBy_(r, map, 'Detalle'),
     monto: valueBy_(r, map, 'Monto'),
+    billetera: valueBy_(r, map, 'Billetera'),
     referencia: valueBy_(r, map, 'Referencia'),
     pedidoId: valueBy_(r, map, 'Pedido ID'),
     actualizado: formatDateTime_(valueBy_(r, map, 'Actualizado'))
@@ -276,6 +284,8 @@ function saveOrder_(order) {
   setCellByHeader_(sh, targetRow, map, 'Precio total', precioTotal);
   setCellByHeader_(sh, targetRow, map, 'Precio', precioTotal);
   setCellByHeader_(sh, targetRow, map, 'Seña', order.sena || '');
+  setCellByHeader_(sh, targetRow, map, 'Parte Iri', order.shareIri || '');
+  setCellByHeader_(sh, targetRow, map, 'Parte mama', order.shareMama || '');
   setCellByHeader_(sh, targetRow, map, 'Estado', normalizeStatus_(order.estado));
   setCellByHeader_(sh, targetRow, map, 'Publicar', order.publicar || '');
   setCellByHeader_(sh, targetRow, map, 'Instagram estado', order.instagramEstado || '');
@@ -332,6 +342,7 @@ function savePurchase_(purchase) {
 
   setCellByHeader_(sh, targetRow, map, 'ID', purchase.id);
   setCellByHeader_(sh, targetRow, map, 'Fecha', purchase.fecha || new Date());
+  setCellByHeader_(sh, targetRow, map, 'Billetera', purchase.billetera || 'iri');
   setCellByHeader_(sh, targetRow, map, 'Concepto', purchase.concepto || '');
   setCellByHeader_(sh, targetRow, map, 'Monto', purchase.monto || '');
   setCellByHeader_(sh, targetRow, map, 'Nota', purchase.nota || '');
@@ -343,6 +354,7 @@ function savePurchase_(purchase) {
     tipo: 'Compra',
     detalle: purchase.concepto || '',
     monto: Number(purchase.monto || 0) * -1,
+    billetera: purchase.billetera || 'iri',
     referencia: purchase.nota || '',
     pedidoId: ''
   });
@@ -368,15 +380,29 @@ function updateStatus_(id, estado) {
   const cliente = valueBy_(rowValues, map, 'Cliente');
   const precio = Number(valueBy_(rowValues, map, 'Precio total') || valueBy_(rowValues, map, 'Precio') || 0);
   const sena = Number(valueBy_(rowValues, map, 'Seña') || valueBy_(rowValues, map, 'SeÃ±a') || 0);
+  const shareIri = Number(valueBy_(rowValues, map, 'Parte Iri') || 0) || Math.round(precio * 0.5);
+  const shareMama = Number(valueBy_(rowValues, map, 'Parte mama') || 0) || Math.round(precio * 0.5);
   const deuda = Math.max(precio - sena, 0);
 
   if (normalized === 'Finalizado') {
     saveMovement_({
-      id: 'MOV-' + id + '-COBRO',
+      id: 'MOV-' + id + '-COBRO-IRI',
       fecha: new Date(),
       tipo: 'Cobro',
       detalle: pedido || 'Pedido cobrado',
-      monto: precio,
+      monto: shareIri,
+      billetera: 'iri',
+      referencia: cliente || '',
+      pedidoId: id
+    });
+
+    saveMovement_({
+      id: 'MOV-' + id + '-COBRO-MAMA',
+      fecha: new Date(),
+      tipo: 'Cobro',
+      detalle: pedido || 'Pedido cobrado',
+      monto: shareMama,
+      billetera: 'mama',
       referencia: cliente || '',
       pedidoId: id
     });
@@ -389,6 +415,7 @@ function updateStatus_(id, estado) {
       tipo: 'Deudor',
       detalle: pedido || 'Pedido con deuda',
       monto: deuda,
+      billetera: '',
       referencia: cliente || '',
       pedidoId: id
     });
@@ -407,6 +434,7 @@ function saveMovement_(movement) {
   setCellByHeader_(sh, targetRow, map, 'Tipo', movement.tipo || '');
   setCellByHeader_(sh, targetRow, map, 'Detalle', movement.detalle || '');
   setCellByHeader_(sh, targetRow, map, 'Monto', movement.monto || '');
+  setCellByHeader_(sh, targetRow, map, 'Billetera', movement.billetera || '');
   setCellByHeader_(sh, targetRow, map, 'Referencia', movement.referencia || '');
   setCellByHeader_(sh, targetRow, map, 'Pedido ID', movement.pedidoId || '');
   setCellByHeader_(sh, targetRow, map, 'Actualizado', new Date());

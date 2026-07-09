@@ -20,7 +20,6 @@
     </div>
 
     <div class="top-actions">
-      <button id="newPurchaseBtn" class="secondary compact">+ Compra</button>
       <button id="newOrderBtn" class="primary compact">+ Pedido</button>
       <button id="syncBtn" class="icon-btn" title="Actualizar">↻</button>
     </div>
@@ -31,7 +30,9 @@
 
     <nav class="view-tabs" aria-label="Vistas">
       <button class="view-tab active" data-view="pedidos">Pedidos</button>
-      <button class="view-tab" data-view="billetera">Billetera</button>
+      <button class="view-tab" data-view="publicar">Publicar</button>
+      <button class="view-tab" data-view="billetera-iri">Billetera Iri</button>
+      <button class="view-tab" data-view="billetera-mama">Billetera mama</button>
     </nav>
 
     <section id="statusMsg" class="status-msg"></section>
@@ -63,15 +64,10 @@
       <nav class="tabs" aria-label="Estados de pedidos">
         <button class="tab active" data-filter="Para hacer"><span>🖨️</span><b>Para hacer</b></button>
         <button class="tab" data-filter="Para entregar"><span>🚗</span><b>Para entregar</b></button>
-        <button class="tab" data-filter="Para publicar"><span>📸</span><b>Para publicar</b></button>
         <button class="tab" data-filter="Para cobrar"><span>💵</span><b>Para cobrar</b></button>
         <button class="tab" data-filter="Deudor"><span>⚠️</span><b>Deudores</b></button>
         <button class="tab" data-filter="Todos"><span>📋</span><b>Activos</b></button>
       </nav>
-
-      <section id="publicationTools" class="publication-tools hidden">
-        <button id="newManualPublicationBtn" class="secondary compact" type="button">+ Publicación manual</button>
-      </section>
 
       <section id="ordersList" class="orders-list"></section>
 
@@ -82,15 +78,30 @@
 
     </section>
 
+    <section id="publicationView" class="hidden">
+
+      <section class="toolbar publication-toolbar">
+        <div>
+          <p class="eyebrow mini">Tareas</p>
+          <h2>Para publicar</h2>
+        </div>
+
+        <button id="newManualPublicationBtn" class="secondary compact" type="button">+ Publicacion</button>
+      </section>
+
+      <section id="publicationList" class="orders-list"></section>
+
+    </section>
+
     <section id="walletView" class="hidden">
 
       <section class="metrics-panel" aria-label="Billetera">
         <div class="panel-head">
           <div>
             <p class="eyebrow mini">Billetera</p>
-            <h2>Cobros, gastos y pendientes</h2>
+            <h2 id="walletTitle">Billetera Iri</h2>
           </div>
-          <button class="secondary compact" type="button" onclick="document.getElementById('newPurchaseBtn').click()">+ Compra</button>
+          <button id="newPurchaseBtn" class="secondary compact" type="button">+ Compra</button>
         </div>
 
         <div class="wallet-filters">
@@ -217,6 +228,30 @@
           placeholder="Opcional"
         />
       </label>
+
+      <div class="grid-2">
+        <label>
+          Parte Iri
+          <input
+            id="shareIri"
+            type="number"
+            min="0"
+            step="1"
+            placeholder="50% automatico"
+          />
+        </label>
+
+        <label>
+          Parte mama
+          <input
+            id="shareMama"
+            type="number"
+            min="0"
+            step="1"
+            placeholder="50% automatico"
+          />
+        </label>
+      </div>
 
       <label id="stateField">
         Estado
@@ -390,6 +425,14 @@
       </label>
 
       <label>
+        Billetera
+        <select id="purchaseWallet">
+          <option value="iri">Billetera Iri</option>
+          <option value="mama">Billetera mama</option>
+        </select>
+      </label>
+
+      <label>
         Qué se compró *
         <input
           id="purchaseConcept"
@@ -428,7 +471,7 @@
 
   </dialog>
 
-  <script src="app.js?v=7"></script>
+  <script src="app.js?v=8"></script>
 
 </body>
 </html>

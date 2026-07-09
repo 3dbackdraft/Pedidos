@@ -1,53 +1,66 @@
-# Organizador de pedidos · 3D Backdraft
+# Organizador de pedidos - 3D Backdraft
 
-App simple para manejar pedidos desde celular o computadora, conectada a Google Sheets con Apps Script.
+App simple para manejar pedidos, tareas de publicacion y billeteras conectadas a Google Sheets con Apps Script.
 
-## Flujo activo
+## Vistas principales
+
+- Pedidos
+- Publicar
+- Billetera Iri
+- Billetera mama
+
+El boton **+ Compra** vive solo dentro de las billeteras.
+
+## Flujo de pedidos
+
+Todo pedido nuevo entra en **Para hacer**.
+
+Dentro de Pedidos quedan estas listas:
 
 - Para hacer
 - Para entregar
-- Para publicar
 - Para cobrar
-- Deudor
-- Finalizado
+- Deudores
+- Activos
 
-Todo pedido nuevo entra siempre en **Para hacer**.
+Cuando un pedido sale de **Para hacer**, la app pregunta si tambien hay que publicarlo:
 
-Cuando un pedido sale de **Para hacer**, la app pregunta si se sacaron fotos:
+- Si aceptas, el pedido pasa a **Para entregar** y se crean tareas pendientes en **Publicar**.
+- Si cancelas, el pedido pasa solo a **Para entregar**.
 
-- Si aceptás, el pedido queda en **Para entregar** y se crean dos tareas en **Para publicar**:
-  - Publicar en Instagram
-  - Publicar en Mercado Libre
-- Si cancelás, queda solamente en **Para entregar**.
+Desde **Para entregar** pasa a **Para cobrar**. Desde **Para cobrar** puede terminar como **Finalizado** o como **Deudor**.
 
-**Para publicar** no es un estado exclusivo: es una lista de tareas pendientes. Cada canal tiene su propio texto editable, comentario y estado. Podés marcar Instagram como publicado y dejar Mercado Libre pendiente, o al revés.
+## Publicar
 
-Los pedidos en estado **Finalizado** no se muestran en la app, pero quedan guardados como registro en la hoja `BASE PEDIDOS`.
+**Publicar** es una vista de tareas pendientes, no un estado extra del pedido.
 
-## Precios y métricas
+Cada tarea puede ser para Instagram, Mercado Libre o ambos. Al marcarla como publicada, el flujo termina ahi. Tambien se pueden crear publicaciones manuales para usarlas solo como tarea pendiente.
 
-Cada pedido ahora permite cargar:
+## Billeteras
 
-- Precio unitario
-- Cantidad
-- Precio total
-- Seña / pagado
+Cada pedido tiene reparto editable:
 
-La app tiene una vista separada llamada **Billetera**. La pantalla principal queda para pedidos y la billetera calcula:
+- Parte Iri
+- Parte mama
 
-- Ingresó cobrado: suma de pedidos `Finalizado`.
-- Ganancia 50%: mitad de lo vendido cobrado.
-- Compras: suma de la pestaña `COMPRAS`.
-- Balance: ganancia 50% menos compras.
-- Para cobrar: saldo pendiente de pedidos en `Para cobrar`.
-- Deudores: saldo pendiente de pedidos en `Deudor`.
-- Listo para entregar: saldo estimado de pedidos en `Para entregar`.
-- En producción: valor total de pedidos en `Para hacer`.
-- Potencial activo: suma de lo pendiente y lo que está en camino.
+Por defecto se propone 50% y 50% del precio total. Se puede editar cuando el cobro real no corresponde a ese reparto.
 
-## Compras
+Cuando un pedido pasa a **Finalizado**, Apps Script registra dos movimientos de cobro:
 
-Las compras se guardan en una pestaña nueva de la misma hoja de cálculo:
+- Billetera Iri: usa `Parte Iri`.
+- Billetera mama: usa `Parte mama`.
+
+Cada compra queda asociada a la billetera elegida.
+
+## Hojas usadas
+
+La pestaña principal debe llamarse:
+
+```txt
+BASE PEDIDOS
+```
+
+Compras:
 
 ```txt
 COMPRAS
@@ -56,38 +69,10 @@ COMPRAS
 Columnas:
 
 ```txt
-ID, Fecha, Concepto, Monto, Nota, Actualizado
+ID, Fecha, Billetera, Concepto, Monto, Nota, Actualizado
 ```
 
-## Publicaciones
-
-Las publicaciones se guardan dentro de `BASE PEDIDOS`, en columnas separadas:
-
-- Instagram estado
-- Instagram texto
-- Instagram comentario
-- Mercado Libre estado
-- Mercado Libre texto
-- Mercado Libre comentario
-
-Los estados usados son:
-
-- Pendiente
-- Publicado
-
-En la vista **Para publicar** también se pueden crear publicaciones manuales con el botón **+ Publicación manual**. Al crearla, la app pregunta si va para Instagram, Mercado Libre o ambos. Si elegís ambos, se crean dos tareas pendientes resumidas.
-
-Las tarjetas de **Para publicar** quedan minimizadas por defecto. El título principal es el producto; el canal se ve por ícono/etiqueta y el detalle aparece al abrir la tarjeta.
-
-## Movimientos
-
-La vista **Billetera** incluye un historial de movimientos. El Apps Script registra automáticamente:
-
-- Compra: cuando se carga una compra.
-- Cobro: cuando un pedido pasa a `Finalizado`.
-- Deudor: cuando un pedido pasa a `Deudor`.
-
-Los movimientos se guardan en la pestaña:
+Movimientos:
 
 ```txt
 MOVIMIENTOS
@@ -96,33 +81,7 @@ MOVIMIENTOS
 Columnas:
 
 ```txt
-ID, Fecha, Tipo, Detalle, Monto, Referencia, Pedido ID, Actualizado
-```
-
-Si el Apps Script todavía no fue actualizado, la app arma una lista temporal desde compras y pedidos, pero para que quede guardado como historial real hay que desplegar `apps-script.gs`.
-
-Billetera permite filtrar por fecha desde/hasta. Por defecto muestra todo.
-
-## URL de Apps Script cargada en `app.js`
-
-```txt
-https://script.google.com/macros/s/AKfycbzxZw_6sg86FlLSfnEkk4wvOfvdk2Xpr8WIjet0w3bwVe7PMzZlpMaoKzvGB0omy_Ym/exec
-```
-
-## Muy importante si no guarda en Sheet
-
-En `apps-script.gs`, revisá esta línea:
-
-```js
-const SPREADSHEET_ID = '1keP-JZV0c8p_3_-pzGpU4ifJ0u1WvY00GOQDRY-YL2U';
-```
-
-Ese ID debe ser el de la **hoja de cálculo**, no el del Apps Script.
-
-La pestaña principal debe llamarse exactamente:
-
-```txt
-BASE PEDIDOS
+ID, Fecha, Tipo, Detalle, Monto, Billetera, Referencia, Pedido ID, Actualizado
 ```
 
 ## Pasos para actualizar Apps Script
@@ -130,19 +89,7 @@ BASE PEDIDOS
 1. Copiar todo `apps-script.gs` y pegarlo en `Code.gs`.
 2. Guardar.
 3. Ejecutar `setup()`.
-4. Ir a **Implementar > Administrar implementaciones > Editar > Nueva versión**.
-5. Mantener acceso como **Cualquier persona** y ejecución como **Yo**.
+4. Ir a **Implementar > Administrar implementaciones > Editar > Nueva version**.
+5. Mantener acceso como **Cualquier persona** y ejecucion como **Yo**.
 
-`setup()` conserva los datos existentes y agrega encabezados faltantes. No debería borrar pedidos.
-
-Si la hoja tiene encabezados duplicados por pruebas anteriores, el script ahora usa la primera columna encontrada para cada encabezado. Aun así, conviene limpiar duplicados manualmente cuando ya esté todo funcionando.
-
-## Prueba rápida
-
-Abrí esta URL en el navegador:
-
-```txt
-https://script.google.com/macros/s/AKfycbzxZw_6sg86FlLSfnEkk4wvOfvdk2Xpr8WIjet0w3bwVe7PMzZlpMaoKzvGB0omy_Ym/exec?action=diagnostico
-```
-
-Tiene que devolver un JSON con `ok: true`, encabezados de `BASE PEDIDOS` y encabezados de `COMPRAS`.
+`setup()` conserva datos existentes y agrega encabezados faltantes.
