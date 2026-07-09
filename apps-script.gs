@@ -83,6 +83,11 @@ function doGet(e) {
       savePurchase_(purchase);
       result = { ok: true, data: purchase };
 
+    } else if (action === 'saveMovement') {
+      const movement = decodePayload_(params.payload);
+      saveMovement_(movement);
+      result = { ok: true, data: movement };
+
     } else if (action === 'savePublicationTask') {
       const task = decodePayload_(params.payload);
       savePublicationTask_(task);

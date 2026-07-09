@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>3D Backdraft · Pedidos</title>
-  <link rel="stylesheet" href="styles.css?v=7" />
+  <link rel="stylesheet" href="styles.css?v=9" />
 </head>
 
 <body>
@@ -31,6 +31,7 @@
     <nav class="view-tabs" aria-label="Vistas">
       <button class="view-tab active" data-view="pedidos">Pedidos</button>
       <button class="view-tab" data-view="publicar">Publicar</button>
+      <button class="view-tab" data-view="ventas">Ventas</button>
       <button class="view-tab" data-view="billetera-iri">Billetera Iri</button>
       <button class="view-tab" data-view="billetera-mama">Billetera mama</button>
     </nav>
@@ -93,6 +94,21 @@
 
     </section>
 
+    <section id="salesView" class="hidden">
+
+      <section class="toolbar publication-toolbar">
+        <div>
+          <p class="eyebrow mini">Ingresos</p>
+          <h2>Ventas sin pedido</h2>
+        </div>
+
+        <button id="newSaleBtn" class="secondary compact" type="button">+ Venta</button>
+      </section>
+
+      <section id="salesList" class="movement-list"></section>
+
+    </section>
+
     <section id="walletView" class="hidden">
 
       <section class="metrics-panel" aria-label="Billetera">
@@ -101,7 +117,10 @@
             <p class="eyebrow mini">Billetera</p>
             <h2 id="walletTitle">Billetera Iri</h2>
           </div>
-          <button id="newPurchaseBtn" class="secondary compact" type="button">+ Compra</button>
+          <div class="panel-actions">
+            <button id="newSaleBtnInline" class="primary compact" type="button" onclick="document.getElementById('newSaleBtn').click()">+ Venta</button>
+            <button id="newPurchaseBtn" class="secondary compact" type="button">+ Compra</button>
+          </div>
         </div>
 
         <div class="wallet-filters">
@@ -124,20 +143,23 @@
       <section class="dashboard-grid wallet-grid">
         <section class="summary-wrap" aria-label="Ultimas compras">
           <div class="inline-head">
-            <h2>Últimas compras</h2>
+            <h2>Historial de compras</h2>
             <button id="newPurchaseBtnInline" class="ghost mini-btn" type="button" onclick="document.getElementById('newPurchaseBtn').click()">+</button>
           </div>
           <section class="purchase-list" id="purchaseList"></section>
         </section>
 
         <section class="summary-wrap" aria-label="Lectura de billetera">
-          <h2>Lectura rápida</h2>
-          <section class="wallet-notes" id="walletNotes"></section>
+          <div class="inline-head">
+            <h2>Historial de ingresos</h2>
+            <button class="ghost mini-btn" type="button" onclick="document.getElementById('newSaleBtn').click()">+</button>
+          </div>
+          <section class="movement-list" id="incomeList"></section>
         </section>
 
-        <section class="summary-wrap wide-panel" aria-label="Movimientos de billetera">
-          <h2>Movimientos</h2>
-          <section class="movement-list" id="movementList"></section>
+        <section class="summary-wrap wide-panel" aria-label="Lectura de billetera">
+          <h2>Lectura rapida</h2>
+          <section class="wallet-notes" id="walletNotes"></section>
         </section>
       </section>
 
@@ -404,6 +426,77 @@
 
   </dialog>
 
+  <dialog id="saleDialog">
+
+    <form id="saleForm" method="dialog" class="form-card">
+
+      <div class="dialog-head">
+
+        <div>
+          <p class="eyebrow mini">Ventas</p>
+          <h2 id="saleDialogTitle">Nueva venta</h2>
+        </div>
+
+        <button type="button" id="closeSaleDialogBtn" class="ghost">Ã—</button>
+
+      </div>
+
+      <input type="hidden" id="saleId" />
+      <input type="hidden" id="saleType" value="Venta" />
+      <input type="hidden" id="saleOrderId" />
+
+      <label>
+        Fecha
+        <input id="saleDate" type="date" />
+      </label>
+
+      <label>
+        Billetera
+        <select id="saleWallet">
+          <option value="iri">Billetera Iri</option>
+          <option value="mama">Billetera mama</option>
+        </select>
+      </label>
+
+      <label>
+        Detalle *
+        <input
+          id="saleDetail"
+          type="text"
+          placeholder="Ej: venta en feria, pieza suelta, seña extra..."
+          required
+        />
+      </label>
+
+      <label>
+        Monto recibido *
+        <input
+          id="saleAmount"
+          type="number"
+          min="0"
+          step="1"
+          placeholder="0"
+          required
+        />
+      </label>
+
+      <label>
+        Referencia
+        <input
+          id="saleReference"
+          type="text"
+          placeholder="Cliente, medio de pago, nota corta..."
+        />
+      </label>
+
+      <button class="primary full" type="submit">
+        Guardar venta
+      </button>
+
+    </form>
+
+  </dialog>
+
   <dialog id="purchaseDialog">
 
     <form id="purchaseForm" method="dialog" class="form-card">
@@ -412,12 +505,14 @@
 
         <div>
           <p class="eyebrow mini">Compras</p>
-          <h2>Nueva compra</h2>
+          <h2 id="purchaseDialogTitle">Nueva compra</h2>
         </div>
 
         <button type="button" id="closePurchaseDialogBtn" class="ghost">×</button>
 
       </div>
+
+      <input type="hidden" id="purchaseId" />
 
       <label>
         Fecha
@@ -471,7 +566,7 @@
 
   </dialog>
 
-  <script src="app.js?v=8"></script>
+  <script src="app.js?v=9"></script>
 
 </body>
 </html>

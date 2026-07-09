@@ -46,6 +46,7 @@ let walletDateFrom = "";
 let walletDateTo = "";
 let savingOrder = false;
 let savingPurchase = false;
+let savingSale = false;
 let savingManualPublication = false;
 
 const $ = (id) => document.getElementById(id);
@@ -56,11 +57,14 @@ const dialog = $("orderDialog");
 const form = $("orderForm");
 const purchaseDialog = $("purchaseDialog");
 const purchaseForm = $("purchaseForm");
+const saleDialog = $("saleDialog");
+const saleForm = $("saleForm");
 const publicationDialog = $("publicationDialog");
 const publicationForm = $("publicationForm");
 const manualPublicationDialog = $("manualPublicationDialog");
 const manualPublicationForm = $("manualPublicationForm");
 const publicationList = $("publicationList");
+const salesList = $("salesList");
 
 function uid(prefix = "PED") {
   return prefix + "-" + new Date()
@@ -132,6 +136,41 @@ function walletShare(order, walletKey) {
 function normalizeWallet(value) {
   const raw = String(value || "").toLowerCase();
   return raw.includes("mama") || raw.includes("mam") ? "mama" : "iri";
+}
+
+function movementAmount(movement) {
+  return numberValue(movement?.monto);
+}
+
+function movementWallet(movement) {
+  return movement?.billetera ? normalizeWallet(movement.billetera) : "";
+}
+
+function isPurchaseMovement(movement) {
+  return String(movement?.tipo || "").toLowerCase() === "compra" ||
+    movementAmount(movement) < 0;
+}
+
+function isIncomeMovement(movement) {
+  const type = String(movement?.tipo || "").toLowerCase();
+  return ["cobro", "venta"].includes(type) && movementAmount(movement) > 0;
+}
+
+function walletMovements() {
+  const source = movements.length ? movements : buildFallbackMovements();
+
+  return filterByWalletDate(
+    source.filter((m) => movementWallet(m) === currentWallet),
+    movementDate
+  ).sort((a, b) => movementDate(b).localeCompare(movementDate(a)));
+}
+
+function manualSales() {
+  return filterByWalletDate(
+    (movements.length ? movements : [])
+      .filter((m) => String(m.tipo || "").toLowerCase() === "venta"),
+    movementDate
+  ).sort((a, b) => movementDate(b).localeCompare(movementDate(a)));
 }
 
 function publishPending(order) {
@@ -301,6 +340,11 @@ function api(action, payload = {}) {
   if (action === "savePurchase") {
     const encoded = base64UrlEncodeUnicode(payload.purchase);
     return jsonp(`${API_URL}?action=savePurchase&payload=${encodeURIComponent(encoded)}`);
+  }
+
+  if (action === "saveMovement") {
+    const encoded = base64UrlEncodeUnicode(payload.movement);
+    return jsonp(`${API_URL}?action=saveMovement&payload=${encodeURIComponent(encoded)}`);
   }
 
   if (action === "updateStatus") {
@@ -495,14 +539,16 @@ function renderMetrics() {
     (p) => p.fecha || p.actualizado
   );
   const wallet = WALLETS[currentWallet] || WALLETS.iri;
+  const scopedMovements = walletMovements();
 
-  const sold = scopedOrders.filter((o) => normalizedStatus(o.estado) === "Finalizado");
   const toCollect = scopedOrders.filter((o) => normalizedStatus(o.estado) === "Para cobrar");
   const debtors = scopedOrders.filter((o) => normalizedStatus(o.estado) === "Deudor");
   const toDeliver = scopedOrders.filter((o) => normalizedStatus(o.estado) === "Para entregar");
   const inProduction = scopedOrders.filter((o) => normalizedStatus(o.estado) === "Para hacer");
 
-  const salesTotal = sold.reduce((sum, o) => sum + walletShare(o, wallet.key), 0);
+  const salesTotal = scopedMovements
+    .filter(isIncomeMovement)
+    .reduce((sum, m) => sum + movementAmount(m), 0);
   const toCollectTotal = toCollect.reduce((sum, o) => sum + Math.max(totalPrice(o) - numberValue(o.sena), 0), 0);
   const debtorsTotal = debtors.reduce((sum, o) => sum + Math.max(totalPrice(o) - numberValue(o.sena), 0), 0);
   const toDeliverTotal = toDeliver.reduce((sum, o) => sum + Math.max(totalPrice(o) - numberValue(o.sena), 0), 0);
@@ -578,52 +624,71 @@ function renderMetrics() {
 }
 
 function renderPurchases() {
-  const latest = filterByWalletDate(
+  const data = filterByWalletDate(
     purchases.filter((p) => normalizeWallet(p.billetera) === currentWallet),
     (p) => p.fecha || p.actualizado
-  )
-    .sort((a, b) => (b.fecha || "").localeCompare(a.fecha || ""))
-    .slice(0, 5);
+  ).sort((a, b) => (b.fecha || "").localeCompare(a.fecha || ""));
 
-  $("purchaseList").innerHTML = latest.length
-    ? latest.map((p) => `
+  $("purchaseList").innerHTML = data.length
+    ? data.map((p) => `
       <article class="purchase-item">
         <div>
           <strong>${escapeHTML(p.concepto || "Compra sin detalle")}</strong>
           <span>${escapeHTML(p.fecha || "")}</span>
         </div>
-        <b>${money(p.monto)}</b>
+        <div class="item-actions">
+          <b>${money(p.monto)}</b>
+          <button class="ghost mini-btn" type="button" onclick="editPurchase('${p.id}')">Editar</button>
+        </div>
       </article>
     `).join("")
     : `<div class="empty compact-empty">Todavia no hay compras cargadas.</div>`;
 }
 
 function renderMovements() {
-  const data = filterByWalletDate(
-    (movements.length ? movements : buildFallbackMovements())
-      .filter((m) => !m.billetera || normalizeWallet(m.billetera) === currentWallet),
-    movementDate
-  )
-    .sort((a, b) => movementDate(b).localeCompare(movementDate(a)))
-    .slice(0, 12);
+  const data = walletMovements().filter(isIncomeMovement);
 
-  $("movementList").innerHTML = data.length
+  $("incomeList").innerHTML = data.length
     ? data.map((m) => {
       const amount = numberValue(m.monto);
-      const isOut = amount < 0 || String(m.tipo || "").toLowerCase() === "compra";
-
       return `
-        <article class="movement-item ${isOut ? "out" : "in"}">
+        <article class="movement-item in">
           <div>
             <strong>${escapeHTML(m.tipo || "Movimiento")}</strong>
             <span>${escapeHTML(m.detalle || "")}</span>
             <small>${escapeHTML(m.fecha || "")}${m.referencia ? ` · ${escapeHTML(m.referencia)}` : ""}</small>
           </div>
-          <b>${money(amount)}</b>
+          <div class="item-actions">
+            <b>${money(amount)}</b>
+            <button class="ghost mini-btn" type="button" onclick="editSale('${m.id}')">Editar</button>
+          </div>
         </article>
       `;
     }).join("")
-    : `<div class="empty compact-empty">Todavia no hay movimientos cargados.</div>`;
+    : `<div class="empty compact-empty">Todavia no hay ingresos cargados.</div>`;
+}
+
+function renderSales() {
+  const data = manualSales();
+
+  salesList.innerHTML = data.length
+    ? data.map((m) => {
+      const wallet = WALLETS[normalizeWallet(m.billetera)] || WALLETS.iri;
+
+      return `
+        <article class="movement-item in">
+          <div>
+            <strong>${escapeHTML(m.detalle || "Venta sin detalle")}</strong>
+            <span>${money(m.monto)} Â· ${escapeHTML(wallet.label)}</span>
+            <small>${escapeHTML(m.fecha || "")}${m.referencia ? ` Â· ${escapeHTML(m.referencia)}` : ""}</small>
+          </div>
+          <div class="item-actions">
+            <button class="ghost mini-btn" type="button" onclick="editSale('${m.id}')">Editar</button>
+          </div>
+        </article>
+      `;
+    }).join("")
+    : `<div class="empty compact-empty">Todavia no hay ventas sueltas cargadas.</div>`;
 }
 
 function sortOrders(data) {
@@ -672,6 +737,7 @@ function render() {
   renderMetrics();
   renderPurchases();
   renderMovements();
+  renderSales();
   renderPublicationTasks();
   renderView();
 
@@ -745,6 +811,7 @@ function renderPublicationTasks() {
 function renderView() {
   $("ordersView").classList.toggle("hidden", currentView !== "pedidos");
   $("publicationView").classList.toggle("hidden", currentView !== "publicar");
+  $("salesView").classList.toggle("hidden", currentView !== "ventas");
   $("walletView").classList.toggle("hidden", !currentView.startsWith("billetera"));
   $("walletTitle").textContent = (WALLETS[currentWallet] || WALLETS.iri).label;
 
@@ -1036,11 +1103,30 @@ function openForm(order = null) {
   dialog.showModal();
 }
 
-function openPurchaseForm() {
+function openPurchaseForm(purchase = null) {
   purchaseForm.reset();
-  $("purchaseDate").value = todayISO();
-  $("purchaseWallet").value = currentWallet;
+  $("purchaseDialogTitle").textContent = purchase ? "Editar compra" : "Nueva compra";
+  $("purchaseId").value = purchase?.id || "";
+  $("purchaseDate").value = purchase?.fecha || todayISO();
+  $("purchaseWallet").value = purchase ? normalizeWallet(purchase.billetera) : currentWallet;
+  $("purchaseConcept").value = purchase?.concepto || "";
+  $("purchaseAmount").value = purchase ? Math.abs(numberValue(purchase.monto)) : "";
+  $("purchaseNote").value = purchase?.nota || "";
   purchaseDialog.showModal();
+}
+
+function openSaleForm(movement = null) {
+  saleForm.reset();
+  $("saleDialogTitle").textContent = movement ? "Editar ingreso" : "Nueva venta";
+  $("saleId").value = movement?.id || "";
+  $("saleType").value = movement?.tipo || "Venta";
+  $("saleOrderId").value = movement?.pedidoId || "";
+  $("saleDate").value = dateOnly(movement?.fecha) || todayISO();
+  $("saleWallet").value = movement ? normalizeWallet(movement.billetera) : currentWallet;
+  $("saleDetail").value = movement?.detalle || "";
+  $("saleAmount").value = movement ? Math.abs(numberValue(movement.monto)) : "";
+  $("saleReference").value = movement?.referencia || "";
+  saleDialog.showModal();
 }
 
 function openManualPublicationForm() {
@@ -1089,6 +1175,23 @@ window.editOrder = function(id) {
 
   if (order) {
     openForm(order);
+  }
+};
+
+window.editPurchase = function(id) {
+  const purchase = purchases.find((p) => p.id === id);
+
+  if (purchase) {
+    openPurchaseForm(purchase);
+  }
+};
+
+window.editSale = function(id) {
+  const movement = movements.find((m) => m.id === id) ||
+    buildFallbackMovements().find((m) => m.id === id);
+
+  if (movement) {
+    openSaleForm(movement);
   }
 };
 
@@ -1353,7 +1456,7 @@ purchaseForm.addEventListener("submit", async (e) => {
   submitBtn.textContent = "Guardando...";
 
   const purchase = {
-    id: uid("COM"),
+    id: $("purchaseId").value || uid("COM"),
     fecha: $("purchaseDate").value || todayISO(),
     billetera: $("purchaseWallet").value || currentWallet,
     concepto: $("purchaseConcept").value.trim(),
@@ -1381,6 +1484,55 @@ purchaseForm.addEventListener("submit", async (e) => {
     savingPurchase = false;
     submitBtn.disabled = false;
     submitBtn.textContent = "Guardar compra";
+  }
+});
+
+saleForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  if (savingSale) {
+    return;
+  }
+
+  savingSale = true;
+
+  const submitBtn =
+    saleForm.querySelector('button[type="submit"]');
+
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Guardando...";
+
+  const movement = {
+    id: $("saleId").value || uid("VEN"),
+    fecha: $("saleDate").value || todayISO(),
+    tipo: $("saleType").value || "Venta",
+    detalle: $("saleDetail").value.trim(),
+    monto: numberValue($("saleAmount").value),
+    billetera: $("saleWallet").value || currentWallet,
+    referencia: $("saleReference").value.trim(),
+    pedidoId: $("saleOrderId").value,
+    actualizado: new Date().toISOString()
+  };
+
+  if (!movement.detalle || !movement.monto) {
+    savingSale = false;
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Guardar venta";
+    return;
+  }
+
+  try {
+    await api("saveMovement", { movement });
+    saleDialog.close();
+    statusMsg.textContent = "Ingreso guardado en Google Sheets.";
+    statusMsg.className = "status-msg ok";
+    await loadData();
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    savingSale = false;
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Guardar venta";
   }
 });
 
@@ -1536,7 +1688,13 @@ $("newOrderBtn").addEventListener("click", () => {
   openForm();
 });
 
-$("newPurchaseBtn").addEventListener("click", openPurchaseForm);
+$("newPurchaseBtn").addEventListener("click", () => {
+  openPurchaseForm();
+});
+
+$("newSaleBtn").addEventListener("click", () => {
+  openSaleForm();
+});
 
 $("newManualPublicationBtn").addEventListener("click", openManualPublicationForm);
 
@@ -1546,6 +1704,10 @@ $("closeDialogBtn").addEventListener("click", () => {
 
 $("closePurchaseDialogBtn").addEventListener("click", () => {
   purchaseDialog.close();
+});
+
+$("closeSaleDialogBtn").addEventListener("click", () => {
+  saleDialog.close();
 });
 
 $("closePublicationDialogBtn").addEventListener("click", () => {

@@ -6,6 +6,7 @@ App simple para manejar pedidos, tareas de publicacion y billeteras conectadas a
 
 - Pedidos
 - Publicar
+- Ventas
 - Billetera Iri
 - Billetera mama
 
@@ -36,6 +37,20 @@ Desde **Para entregar** pasa a **Para cobrar**. Desde **Para cobrar** puede term
 
 Cada tarea puede ser para Instagram, Mercado Libre o ambos. Al marcarla como publicada, el flujo termina ahi. Tambien se pueden crear publicaciones manuales para usarlas solo como tarea pendiente.
 
+## Ventas
+
+La vista **Ventas** permite cargar ingresos que no nacen de un pedido.
+
+Cada venta suelta se guarda como movimiento de tipo `Venta`, con:
+
+- Fecha
+- Billetera
+- Detalle
+- Monto recibido
+- Referencia
+
+Estas ventas aparecen tambien en el historial de ingresos de la billetera correspondiente.
+
 ## Billeteras
 
 Cada pedido tiene reparto editable:
@@ -51,6 +66,13 @@ Cuando un pedido pasa a **Finalizado**, Apps Script registra dos movimientos de 
 - Billetera mama: usa `Parte mama`.
 
 Cada compra queda asociada a la billetera elegida.
+
+Dentro de cada billetera se muestran dos historiales separados:
+
+- Historial de compras
+- Historial de ingresos
+
+Los ingresos incluyen cobros que vienen de pedidos y ventas sueltas. Desde ese historial se puede editar el monto y la billetera cuando alguna persona recibio una parte distinta al 50%.
 
 ## Hojas usadas
 
