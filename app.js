@@ -1,7 +1,8 @@
 const API_URL = "https://script.google.com/macros/s/AKfycbzxZw_6sg86FlLSfnEkk4wvOfvdk2Xpr8WIjet0w3bwVe7PMzZlpMaoKzvGB0omy_Ym/exec";
 
 const DEFAULT_STATUS = "Para hacer";
-const HIDDEN_STATUSES = ["Finalizado"];
+const PUBLICATION_ONLY_STATUS = "Solo publicar";
+const HIDDEN_STATUSES = ["Finalizado", PUBLICATION_ONLY_STATUS];
 const PUBLISH_PENDING = "Pendiente";
 const PUBLISH_DONE = "Publicado";
 const WALLETS = {
@@ -38,6 +39,7 @@ const PUBLISH_CHANNELS = {
 let orders = [];
 let purchases = [];
 let movements = [];
+let publications = [];
 let currentFilter = "Para hacer";
 let currentSort = "nuevos";
 let currentView = "pedidos";
@@ -105,6 +107,11 @@ function normalizedStatus(status) {
   }
 
   return status || DEFAULT_STATUS;
+}
+
+function isPublicationOnly(order) {
+  return normalizedStatus(order?.estado) === PUBLICATION_ONLY_STATUS ||
+    String(order?.id || "").startsWith("PUB-");
 }
 
 function numberValue(value) {
@@ -239,6 +246,7 @@ function publicationTasks(order) {
   if (!order) return [];
 
   return Object.values(PUBLISH_CHANNELS).map((channel) => ({
+    source: "order",
     order,
     channel,
     pending: publicationPending(order, channel),
@@ -246,6 +254,33 @@ function publicationTasks(order) {
     text: publicationText(order, channel),
     comment: publicationComment(order, channel)
   }));
+}
+
+function publicationRowsTasks() {
+  return publications.map((publication) => {
+    const status = String(publication.estado || "").trim();
+    const channelKey = String(publication.canal || "").toLowerCase().includes("mercado")
+      ? "mercadoLibre"
+      : "instagram";
+    const channel = PUBLISH_CHANNELS[channelKey];
+
+    return {
+      source: "publication",
+      publication,
+      order: {
+        id: publication.id,
+        pedido: publication.producto || publication.texto || "Publicacion sin nombre",
+        cliente: publication.referencia || "",
+        fechaCarga: publication.fecha || "",
+        nota: publication.comentario || ""
+      },
+      channel,
+      pending: status.toLowerCase() === PUBLISH_PENDING.toLowerCase(),
+      done: status.toLowerCase() === PUBLISH_DONE.toLowerCase(),
+      text: publication.texto || publication.producto || "",
+      comment: publication.comentario || ""
+    };
+  });
 }
 
 function movementDate(value) {
@@ -407,6 +442,11 @@ function api(action, payload = {}) {
     return jsonp(`${API_URL}?action=savePublicationTask&payload=${encodeURIComponent(encoded)}`);
   }
 
+  if (action === "savePublication") {
+    const encoded = base64UrlEncodeUnicode(payload.publication);
+    return jsonp(`${API_URL}?action=savePublication&payload=${encodeURIComponent(encoded)}`);
+  }
+
   return Promise.reject(new Error("Accion no reconocida"));
 }
 
@@ -470,9 +510,13 @@ async function loadData() {
 
     orders = (result.data || []).map((o) => {
       const estado = normalizedStatus(o.estado);
+      const hasExplicitChannelStatus = Boolean(o.instagramEstado || o.mercadoLibreEstado);
       const legacyPending =
         estado === "Para publicar" ||
-        String(o.publicar || "").toLowerCase() === PUBLISH_PENDING.toLowerCase();
+        (
+          String(o.publicar || "").toLowerCase() === PUBLISH_PENDING.toLowerCase() &&
+          !hasExplicitChannelStatus
+        );
 
       return {
         ...o,
@@ -499,6 +543,7 @@ async function loadData() {
       ...m,
       billetera: m.billetera ? normalizeWallet(m.billetera) : ""
     }));
+    publications = result.publications || [];
 
     render();
 
@@ -514,9 +559,14 @@ async function loadData() {
 
 function activeOrders() {
   return orders.filter((o) =>
-    !HIDDEN_STATUSES.includes(
-      normalizedStatus(o.estado)
-    )
+    !HIDDEN_STATUSES.includes(normalizedStatus(o.estado)) &&
+    !isPublicationOnly(o)
+  );
+}
+
+function publicationOrders() {
+  return orders.filter((o) =>
+    normalizedStatus(o.estado) !== "Finalizado"
   );
 }
 
@@ -568,7 +618,10 @@ function renderSummary() {
 }
 
 function renderMetrics() {
-  const scopedOrders = filterByWalletDate(orders, movementDate);
+  const scopedOrders = filterByWalletDate(
+    orders.filter((o) => !isPublicationOnly(o)),
+    movementDate
+  );
   const scopedPurchases = filterByWalletDate(
     purchases.filter((p) => normalizeWallet(p.billetera) === currentWallet),
     (p) => p.fecha || p.actualizado
@@ -817,7 +870,7 @@ function renderPublicationTasks() {
     .toLowerCase()
     .trim();
 
-  let data = activeOrders();
+  let data = publicationOrders().filter((order) => !isPublicationOnly(order));
 
   if (q) {
     data = data.filter((o) =>
@@ -827,9 +880,11 @@ function renderPublicationTasks() {
     );
   }
 
-  const tasks = data.flatMap((order) =>
+  const orderTasks = data.flatMap((order) =>
     publicationTasks(order).filter((task) => task.pending)
   );
+  const rowTasks = publicationRowsTasks().filter((task) => task.pending);
+  const tasks = [...rowTasks, ...orderTasks];
 
   publicationList.innerHTML = tasks.length
     ? tasks.map(publicationTaskCard).join("")
@@ -910,7 +965,7 @@ function publicationTaskCard(task) {
             ✏️ Editar publicación
           </button>
 
-          <button onclick="markChannelPublished('${order.id}', '${channel.key}')">
+          <button onclick="markChannelPublished('${order.id}', '${channel.key}', '${task.source}')">
             ✅ Marcar publicado
           </button>
 
@@ -1189,6 +1244,22 @@ function openPublicationForm(order, channel) {
   publicationDialog.showModal();
 }
 
+function openPublicationRowForm(publication) {
+  publicationForm.reset();
+
+  $("publicationOrderId").value = publication.id;
+  $("publicationChannel").value = "__publication";
+  $("publicationTitle").textContent = `Publicar en ${publication.canal || "canal"}`;
+  $("publicationProduct").textContent = publication.producto || "Publicacion sin nombre";
+  $("publicationText").value = publication.texto || publication.producto || "";
+  $("publicationComment").value = publication.comentario || "";
+  $("publicationStatus").value = String(publication.estado || "").toLowerCase() === PUBLISH_DONE.toLowerCase()
+    ? PUBLISH_DONE
+    : PUBLISH_PENDING;
+
+  publicationDialog.showModal();
+}
+
 function syncTotalFromInputs() {
   const unit = numberValue($("precioUnitario").value);
   const qty = numberValue($("cantidad").value);
@@ -1235,8 +1306,11 @@ window.editSale = function(id) {
 window.openPublicationEditor = function(id, channelKey) {
   const order = orders.find((o) => o.id === id);
   const channel = PUBLISH_CHANNELS[channelKey];
+  const publication = publications.find((p) => p.id === id);
 
-  if (order && channel) {
+  if (publication) {
+    openPublicationRowForm(publication);
+  } else if (order && channel) {
     openPublicationForm(order, channel);
   }
 };
@@ -1301,9 +1375,32 @@ window.finishProduction = async function(id) {
   }
 };
 
-window.markChannelPublished = async function(id, channelKey) {
+window.markChannelPublished = async function(id, channelKey, source = "order") {
   const channel = PUBLISH_CHANNELS[channelKey];
   if (!channel) return;
+
+  if (source === "publication") {
+    const publication = publications.find((p) => p.id === id);
+    if (!publication) return;
+
+    try {
+      await api("savePublication", {
+        publication: {
+          ...publication,
+          estado: PUBLISH_DONE,
+          actualizado: new Date().toISOString()
+        }
+      });
+
+      statusMsg.textContent = `${channel.label} marcado como publicado.`;
+      statusMsg.className = "status-msg ok";
+      await loadData();
+    } catch (err) {
+      alert(err.message);
+    }
+
+    return;
+  }
 
   const previous = orders;
 
@@ -1641,29 +1738,7 @@ manualPublicationForm.addEventListener("submit", async (e) => {
   const comment = $("manualPublicationComment").value.trim();
   const id = uid("PUB");
 
-  const order = {
-    id,
-    fechaCarga: todayISO(),
-    pedido: text,
-    cliente: $("manualPublicationClient").value.trim(),
-    precioUnitario: "",
-    cantidad: 1,
-    precioTotal: "",
-    precio: "",
-    sena: "",
-    estado: "Para entregar",
-    publicar: PUBLISH_PENDING,
-    instagramEstado: instagram ? PUBLISH_PENDING : "",
-    instagramTexto: instagram ? text : "",
-    instagramComentario: instagram ? comment : "",
-    mercadoLibreEstado: mercadoLibre ? PUBLISH_PENDING : "",
-    mercadoLibreTexto: mercadoLibre ? text : "",
-    mercadoLibreComentario: mercadoLibre ? comment : "",
-    nota: comment,
-    actualizado: new Date().toISOString()
-  };
-
-  if (!order.pedido) {
+  if (!text) {
     savingManualPublication = false;
     submitBtn.disabled = false;
     submitBtn.textContent = "Crear publicación";
@@ -1671,7 +1746,36 @@ manualPublicationForm.addEventListener("submit", async (e) => {
   }
 
   try {
-    await api("save", { order });
+    const basePublication = {
+      fecha: todayISO(),
+      producto: text,
+      referencia: $("manualPublicationClient").value.trim(),
+      estado: PUBLISH_PENDING,
+      texto: text,
+      comentario: comment,
+      pedidoId: "",
+      actualizado: new Date().toISOString()
+    };
+
+    if (instagram) {
+      await api("savePublication", {
+        publication: {
+          ...basePublication,
+          id: `${id}-instagram`,
+          canal: "Instagram"
+        }
+      });
+    }
+
+    if (mercadoLibre) {
+      await api("savePublication", {
+        publication: {
+          ...basePublication,
+          id: `${id}-mercadoLibre`,
+          canal: "Mercado Libre"
+        }
+      });
+    }
     manualPublicationDialog.close();
     statusMsg.textContent = "Publicación manual creada.";
     statusMsg.className = "status-msg ok";
@@ -1701,9 +1805,10 @@ publicationForm.addEventListener("submit", async (e) => {
   e.preventDefault();
 
   const id = $("publicationOrderId").value;
-  const channel = PUBLISH_CHANNELS[$("publicationChannel").value];
+  const channelKey = $("publicationChannel").value;
+  const channel = PUBLISH_CHANNELS[channelKey];
 
-  if (!id || !channel) {
+  if (!id || (!channel && channelKey !== "__publication")) {
     return;
   }
 
@@ -1711,6 +1816,39 @@ publicationForm.addEventListener("submit", async (e) => {
   const text = $("publicationText").value.trim();
   const comment = $("publicationComment").value.trim();
   const previous = orders;
+
+  if (channelKey === "__publication") {
+    const publication = publications.find((p) => p.id === id);
+    if (!publication) return;
+
+    const submitBtn = publicationForm.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Guardando...";
+
+    try {
+      await api("savePublication", {
+        publication: {
+          ...publication,
+          estado: status,
+          texto: text,
+          comentario: comment,
+          actualizado: new Date().toISOString()
+        }
+      });
+
+      publicationDialog.close();
+      statusMsg.textContent = "Publicacion guardada.";
+      statusMsg.className = "status-msg ok";
+      await loadData();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Guardar publicación";
+    }
+
+    return;
+  }
 
   orders = orders.map((o) =>
     o.id === id

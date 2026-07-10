@@ -2,6 +2,7 @@ const SPREADSHEET_ID = '1keP-JZV0c8p_3_-pzGpU4ifJ0u1WvY00GOQDRY-YL2U';
 const SHEET_NAME = 'BASE PEDIDOS';
 const PURCHASES_SHEET_NAME = 'COMPRAS';
 const MOVEMENTS_SHEET_NAME = 'MOVIMIENTOS';
+const PUBLICATIONS_SHEET_NAME = 'PUBLICACIONES';
 
 const HEADERS = [
   'ID',
@@ -50,8 +51,25 @@ const MOVEMENT_HEADERS = [
   'Actualizado'
 ];
 
+const PUBLICATION_HEADERS = [
+  'ID',
+  'Fecha',
+  'Producto',
+  'Referencia',
+  'Canal',
+  'Estado',
+  'Texto',
+  'Comentario',
+  'Pedido ID',
+  'Actualizado'
+];
+
 function setup() {
   ensureSheet_();
+}
+
+function prueba() {
+  return 'OK';
 }
 
 function doGet(e) {
@@ -70,7 +88,8 @@ function doGet(e) {
         ok: true,
         data: readOrders_(),
         purchases: readPurchases_(),
-        movements: readMovements_()
+        movements: readMovements_(),
+        publications: readPublications_()
       };
 
     } else if (action === 'save') {
@@ -92,6 +111,11 @@ function doGet(e) {
       const task = decodePayload_(params.payload);
       savePublicationTask_(task);
       result = { ok: true, data: task };
+
+    } else if (action === 'savePublication') {
+      const publication = decodePayload_(params.payload);
+      savePublication_(publication);
+      result = { ok: true, data: publication };
 
     } else if (action === 'updatePublish') {
       updatePublish_(params.id, params.publicar);
@@ -123,10 +147,12 @@ function ensureSheet_() {
   const ordersSheet = ensureOneSheet_(ss, SHEET_NAME, HEADERS);
   const purchasesSheet = ensureOneSheet_(ss, PURCHASES_SHEET_NAME, PURCHASE_HEADERS);
   const movementsSheet = ensureOneSheet_(ss, MOVEMENTS_SHEET_NAME, MOVEMENT_HEADERS);
+  const publicationsSheet = ensureOneSheet_(ss, PUBLICATIONS_SHEET_NAME, PUBLICATION_HEADERS);
 
-  styleHeader_(ordersSheet, HEADERS.length);
-  styleHeader_(purchasesSheet, PURCHASE_HEADERS.length);
-  styleHeader_(movementsSheet, MOVEMENT_HEADERS.length);
+  safeStyleHeader_(ordersSheet, HEADERS.length);
+  safeStyleHeader_(purchasesSheet, PURCHASE_HEADERS.length);
+  safeStyleHeader_(movementsSheet, MOVEMENT_HEADERS.length);
+  safeStyleHeader_(publicationsSheet, PUBLICATION_HEADERS.length);
 }
 
 function ensureOneSheet_(ss, name, headers) {
@@ -161,11 +187,21 @@ function styleHeader_(sh, cols) {
   sh.autoResizeColumns(1, Math.max(sh.getLastColumn(), cols));
 }
 
+function safeStyleHeader_(sh, cols) {
+  try {
+    styleHeader_(sh, cols);
+  } catch (err) {
+    // El formato no debe impedir que setup agregue las columnas necesarias.
+    console.log('No se pudo aplicar formato a ' + sh.getName() + ': ' + (err.message || err));
+  }
+}
+
 function diagnostico_() {
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
   const sh = ss.getSheetByName(SHEET_NAME);
   const purchases = ss.getSheetByName(PURCHASES_SHEET_NAME);
   const movements = ss.getSheetByName(MOVEMENTS_SHEET_NAME);
+  const publications = ss.getSheetByName(PUBLICATIONS_SHEET_NAME);
 
   return {
     ok: true,
@@ -179,7 +215,10 @@ function diagnostico_() {
     purchasesHeaders: getHeaders_(purchases),
     movementsSheetName: movements.getName(),
     movementsLastRow: movements.getLastRow(),
-    movementsHeaders: getHeaders_(movements)
+    movementsHeaders: getHeaders_(movements),
+    publicationsSheetName: publications.getName(),
+    publicationsLastRow: publications.getLastRow(),
+    publicationsHeaders: getHeaders_(publications)
   };
 }
 
@@ -197,7 +236,14 @@ function readOrders_() {
     const precioTotal = valueBy_(r, map, 'Precio total') || valueBy_(r, map, 'Precio');
     const estadoHoja = normalizeStatus_(valueBy_(r, map, 'Estado'));
     const publicarHoja = valueBy_(r, map, 'Publicar');
-    const legacyPending = estadoHoja === 'Para publicar' || String(publicarHoja).toLowerCase() === 'pendiente';
+    const instagramEstado = valueBy_(r, map, 'Instagram estado');
+    const mercadoLibreEstado = valueBy_(r, map, 'Mercado Libre estado');
+    const hasExplicitChannelStatus = Boolean(instagramEstado || mercadoLibreEstado);
+    const legacyPending = estadoHoja === 'Para publicar' ||
+      (
+        String(publicarHoja).toLowerCase() === 'pendiente' &&
+        !hasExplicitChannelStatus
+      );
 
     return {
       id: valueBy_(r, map, 'ID'),
@@ -213,10 +259,10 @@ function readOrders_() {
       shareMama: valueBy_(r, map, 'Parte mama'),
       estado: estadoHoja === 'Para publicar' ? 'Para entregar' : estadoHoja,
       publicar: estadoHoja === 'Para publicar' ? 'Pendiente' : publicarHoja,
-      instagramEstado: valueBy_(r, map, 'Instagram estado') || (legacyPending ? 'Pendiente' : ''),
+      instagramEstado: instagramEstado || (legacyPending ? 'Pendiente' : ''),
       instagramTexto: valueBy_(r, map, 'Instagram texto') || valueBy_(r, map, 'Pedido'),
       instagramComentario: valueBy_(r, map, 'Instagram comentario'),
-      mercadoLibreEstado: valueBy_(r, map, 'Mercado Libre estado') || (legacyPending ? 'Pendiente' : ''),
+      mercadoLibreEstado: mercadoLibreEstado || (legacyPending ? 'Pendiente' : ''),
       mercadoLibreTexto: valueBy_(r, map, 'Mercado Libre texto') || valueBy_(r, map, 'Pedido'),
       mercadoLibreComentario: valueBy_(r, map, 'Mercado Libre comentario'),
       fechaCompromiso: formatDate_(valueBy_(r, map, 'Fecha compromiso')),
@@ -270,6 +316,30 @@ function readMovements_() {
   }));
 }
 
+function readPublications_() {
+  const sh = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(PUBLICATIONS_SHEET_NAME);
+  const last = sh.getLastRow();
+
+  if (last < 2) return [];
+
+  const headers = getHeaders_(sh);
+  const map = headerMap_(headers);
+  const values = sh.getRange(2, 1, last - 1, headers.length).getValues();
+
+  return values.filter(r => valueBy_(r, map, 'ID')).map(r => ({
+    id: valueBy_(r, map, 'ID'),
+    fecha: formatDate_(valueBy_(r, map, 'Fecha')),
+    producto: valueBy_(r, map, 'Producto'),
+    referencia: valueBy_(r, map, 'Referencia'),
+    canal: valueBy_(r, map, 'Canal'),
+    estado: valueBy_(r, map, 'Estado'),
+    texto: valueBy_(r, map, 'Texto'),
+    comentario: valueBy_(r, map, 'Comentario'),
+    pedidoId: valueBy_(r, map, 'Pedido ID'),
+    actualizado: formatDateTime_(valueBy_(r, map, 'Actualizado'))
+  }));
+}
+
 function saveOrder_(order) {
   if (!order || !order.id) throw new Error('Pedido invalido: falta ID');
 
@@ -302,6 +372,46 @@ function saveOrder_(order) {
   setCellByHeader_(sh, targetRow, map, 'Fecha compromiso', order.fechaCompromiso || '');
   setCellByHeader_(sh, targetRow, map, 'Nota', order.nota || '');
   setCellByHeader_(sh, targetRow, map, 'Actualizado', new Date());
+
+  savePublicationsFromOrder_(order);
+}
+
+function savePublicationsFromOrder_(order) {
+  if (!order) return;
+
+  const isPublicationOnly =
+    String(order.estado || '') === 'Solo publicar' ||
+    String(order.id || '').indexOf('PUB-') === 0;
+
+  if (!isPublicationOnly) return;
+
+  if (order.instagramEstado) {
+    savePublication_({
+      id: 'PUBTASK-' + order.id + '-instagram',
+      fecha: order.fechaCarga || new Date(),
+      producto: order.pedido || order.instagramTexto || '',
+      referencia: order.cliente || '',
+      canal: 'Instagram',
+      estado: order.instagramEstado,
+      texto: order.instagramTexto || order.pedido || '',
+      comentario: order.instagramComentario || order.nota || '',
+      pedidoId: ''
+    });
+  }
+
+  if (order.mercadoLibreEstado) {
+    savePublication_({
+      id: 'PUBTASK-' + order.id + '-mercadoLibre',
+      fecha: order.fechaCarga || new Date(),
+      producto: order.pedido || order.mercadoLibreTexto || '',
+      referencia: order.cliente || '',
+      canal: 'Mercado Libre',
+      estado: order.mercadoLibreEstado,
+      texto: order.mercadoLibreTexto || order.pedido || '',
+      comentario: order.mercadoLibreComentario || order.nota || '',
+      pedidoId: ''
+    });
+  }
 }
 
 function savePublicationTask_(task) {
@@ -332,6 +442,51 @@ function savePublicationTask_(task) {
   }
 
   setCellByHeader_(sh, row, map, 'Actualizado', new Date());
+
+  savePublicationFromTask_(task, rowValuesFromSheet_(sh, row, headers.length), map);
+}
+
+function savePublicationFromTask_(task, rowValues, orderMap) {
+  if (!task.estado) return;
+
+  const pedido = valueBy_(rowValues, orderMap, 'Pedido');
+  const cliente = valueBy_(rowValues, orderMap, 'Cliente');
+  const fechaCarga = valueBy_(rowValues, orderMap, 'Fecha carga');
+  const channelLabel = task.channel === 'mercadoLibre' ? 'Mercado Libre' : 'Instagram';
+
+  savePublication_({
+    id: 'PUBTASK-' + task.id + '-' + task.channel,
+    fecha: fechaCarga || new Date(),
+    producto: pedido || task.texto || '',
+    referencia: cliente || '',
+    canal: channelLabel,
+    estado: task.estado || '',
+    texto: task.texto || pedido || '',
+    comentario: task.comentario || '',
+    pedidoId: task.id
+  });
+}
+
+function savePublication_(publication) {
+  if (!publication || !publication.id) throw new Error('Publicacion invalida: falta ID');
+  if (!publication.producto && !publication.texto) throw new Error('Falta producto o texto de publicacion');
+
+  const sh = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(PUBLICATIONS_SHEET_NAME);
+  const headers = getHeaders_(sh);
+  const map = headerMap_(headers);
+  const row = findRowById_(sh, publication.id);
+  const targetRow = row || sh.getLastRow() + 1;
+
+  setCellByHeader_(sh, targetRow, map, 'ID', publication.id);
+  setCellByHeader_(sh, targetRow, map, 'Fecha', publication.fecha || new Date());
+  setCellByHeader_(sh, targetRow, map, 'Producto', publication.producto || publication.texto || '');
+  setCellByHeader_(sh, targetRow, map, 'Referencia', publication.referencia || '');
+  setCellByHeader_(sh, targetRow, map, 'Canal', publication.canal || '');
+  setCellByHeader_(sh, targetRow, map, 'Estado', publication.estado || 'Pendiente');
+  setCellByHeader_(sh, targetRow, map, 'Texto', publication.texto || publication.producto || '');
+  setCellByHeader_(sh, targetRow, map, 'Comentario', publication.comentario || '');
+  setCellByHeader_(sh, targetRow, map, 'Pedido ID', publication.pedidoId || '');
+  setCellByHeader_(sh, targetRow, map, 'Actualizado', new Date());
 }
 
 function savePurchase_(purchase) {
@@ -499,6 +654,10 @@ function valueBy_(row, map, header) {
 function setCellByHeader_(sh, row, map, header, value) {
   const col = map[header];
   if (col) sh.getRange(row, col).setValue(value);
+}
+
+function rowValuesFromSheet_(sh, row, cols) {
+  return sh.getRange(row, 1, 1, cols).getValues()[0];
 }
 
 function normalizeStatus_(status) {

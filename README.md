@@ -37,6 +37,8 @@ Desde **Para entregar** pasa a **Para cobrar**. Desde **Para cobrar** puede term
 
 Cada tarea puede ser para Instagram, Mercado Libre o ambos. Al marcarla como publicada, el flujo termina ahi. Tambien se pueden crear publicaciones manuales para usarlas solo como tarea pendiente.
 
+Las publicaciones creadas desde **Publicar** quedan con estado interno `Solo publicar`: no aparecen en `Para entregar`, no pasan a `Para cobrar` y no entran al flujo de ventas/pedidos. Si se desmarca Instagram o Mercado Libre, solo se crea la tarea del canal seleccionado.
+
 ## Ventas
 
 La vista **Ventas** permite cargar ingresos que no nacen de un pedido.
@@ -106,6 +108,20 @@ Columnas:
 ```txt
 ID, Fecha, Tipo, Detalle, Monto, Billetera, Referencia, Pedido ID, Actualizado
 ```
+
+Publicaciones:
+
+```txt
+PUBLICACIONES
+```
+
+Columnas:
+
+```txt
+ID, Fecha, Producto, Referencia, Canal, Estado, Texto, Comentario, Pedido ID, Actualizado
+```
+
+Apps Script crea esta hoja con `setup()`. Las publicaciones manuales y las tareas creadas desde pedidos se guardan ahi por canal.
 
 ## Pasos para actualizar Apps Script
 
