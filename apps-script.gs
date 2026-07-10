@@ -422,6 +422,11 @@ function readPublications_() {
 function saveOrder_(order) {
   if (!order || !order.id) throw new Error('Pedido invalido: falta ID');
 
+  if (isPublicationOnlyOrder_(order)) {
+    savePublicationsFromOrder_(order);
+    return;
+  }
+
   const sh = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
   const headers = getHeaders_(sh);
   const map = headerMap_(headers);
@@ -455,14 +460,28 @@ function saveOrder_(order) {
   savePublicationsFromOrder_(order);
 }
 
+function isPublicationOnlyOrder_(order) {
+  if (!order) return false;
+
+  const id = String(order.id || '');
+  const estado = String(order.estado || '');
+  const hasPublicationChannel = Boolean(order.instagramEstado || order.mercadoLibreEstado);
+  const hasPrice = Number(order.precioTotal || order.precio || order.precioUnitario || 0) > 0 ||
+    Number(order.sena || 0) > 0;
+
+  return estado === 'Solo publicar' ||
+    id.indexOf('PUB-') === 0 ||
+    (
+      hasPublicationChannel &&
+      !hasPrice &&
+      !order.cliente
+    );
+}
+
 function savePublicationsFromOrder_(order) {
   if (!order) return;
 
-  const isPublicationOnly =
-    String(order.estado || '') === 'Solo publicar' ||
-    String(order.id || '').indexOf('PUB-') === 0;
-
-  if (!isPublicationOnly) return;
+  if (!isPublicationOnlyOrder_(order)) return;
 
   if (order.instagramEstado) {
     savePublication_({
