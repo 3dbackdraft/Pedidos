@@ -110,8 +110,17 @@ function normalizedStatus(status) {
 }
 
 function isPublicationOnly(order) {
+  const status = normalizedStatus(order?.estado);
+  const hasPrice = totalPrice(order) > 0 || numberValue(order?.sena) > 0;
+  const hasPublicationTask = publishPending(order);
+
   return normalizedStatus(order?.estado) === PUBLICATION_ONLY_STATUS ||
-    String(order?.id || "").startsWith("PUB-");
+    String(order?.id || "").startsWith("PUB-") ||
+    (
+      status === "Para entregar" &&
+      !hasPrice &&
+      hasPublicationTask
+    );
 }
 
 function numberValue(value) {

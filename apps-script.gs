@@ -72,6 +72,85 @@ function prueba() {
   return 'OK';
 }
 
+function limpiarPublicacionesDePedidos() {
+  ensureSheet_();
+
+  const sh = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
+  const last = sh.getLastRow();
+
+  if (last < 2) return 'No hay filas para revisar';
+
+  const headers = getHeaders_(sh);
+  const map = headerMap_(headers);
+  const values = sh.getRange(2, 1, last - 1, headers.length).getValues();
+  let count = 0;
+
+  values.forEach((row, index) => {
+    const sheetRow = index + 2;
+    const id = String(valueBy_(row, map, 'ID') || '');
+    const estado = normalizeStatus_(valueBy_(row, map, 'Estado'));
+    const publicar = String(valueBy_(row, map, 'Publicar') || '').toLowerCase();
+    const instagramEstado = valueBy_(row, map, 'Instagram estado');
+    const mercadoLibreEstado = valueBy_(row, map, 'Mercado Libre estado');
+    const precio = Number(valueBy_(row, map, 'Precio total') || valueBy_(row, map, 'Precio') || 0);
+    const sena = Number(valueBy_(row, map, 'SeÃ±a') || valueBy_(row, map, 'Seña') || 0);
+    const hasPublicationTask = Boolean(instagramEstado || mercadoLibreEstado || publicar === 'pendiente');
+    const looksLikeManualPublication = (
+      id.indexOf('PUB-') === 0 ||
+      (
+        estado === 'Para entregar' &&
+        !precio &&
+        !sena &&
+        hasPublicationTask
+      )
+    );
+
+    if (looksLikeManualPublication) {
+      const pedido = valueBy_(row, map, 'Pedido');
+      const cliente = valueBy_(row, map, 'Cliente');
+      const fechaCarga = valueBy_(row, map, 'Fecha carga') || new Date();
+      const instagramTexto = valueBy_(row, map, 'Instagram texto') || pedido;
+      const instagramComentario = valueBy_(row, map, 'Instagram comentario') || valueBy_(row, map, 'Nota');
+      const mercadoLibreTexto = valueBy_(row, map, 'Mercado Libre texto') || pedido;
+      const mercadoLibreComentario = valueBy_(row, map, 'Mercado Libre comentario') || valueBy_(row, map, 'Nota');
+
+      if (instagramEstado) {
+        savePublication_({
+          id: 'PUBTASK-' + id + '-instagram',
+          fecha: fechaCarga,
+          producto: pedido || instagramTexto || '',
+          referencia: cliente || '',
+          canal: 'Instagram',
+          estado: instagramEstado,
+          texto: instagramTexto || '',
+          comentario: instagramComentario || '',
+          pedidoId: ''
+        });
+      }
+
+      if (mercadoLibreEstado) {
+        savePublication_({
+          id: 'PUBTASK-' + id + '-mercadoLibre',
+          fecha: fechaCarga,
+          producto: pedido || mercadoLibreTexto || '',
+          referencia: cliente || '',
+          canal: 'Mercado Libre',
+          estado: mercadoLibreEstado,
+          texto: mercadoLibreTexto || '',
+          comentario: mercadoLibreComentario || '',
+          pedidoId: ''
+        });
+      }
+
+      setCellByHeader_(sh, sheetRow, map, 'Estado', 'Solo publicar');
+      setCellByHeader_(sh, sheetRow, map, 'Actualizado', new Date());
+      count++;
+    }
+  });
+
+  return 'Filas marcadas como Solo publicar: ' + count;
+}
+
 function doGet(e) {
   const params = e && e.parameter ? e.parameter : {};
   const action = params.action || 'list';
