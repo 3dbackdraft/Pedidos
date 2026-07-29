@@ -113,7 +113,7 @@ main {
 
 .view-tabs {
   display: grid;
-  grid-template-columns: repeat(5, minmax(140px, 1fr));
+  grid-template-columns: repeat(4, minmax(140px, 1fr));
   gap: 4px;
   padding: 4px;
   margin-bottom: 10px;
@@ -310,26 +310,8 @@ select:focus {
   border-left-color: var(--purple-2);
 }
 
-.order-card.para-publicar {
-  border-left-color: var(--blue);
-}
-
-.publication-card {
-  display: block;
-}
-
-.publication-tools {
-  display: flex;
-  justify-content: flex-end;
-  margin: -2px 0 10px;
-}
-
-.publication-toolbar {
+.section-toolbar {
   align-items: center;
-}
-
-.publication-summary {
-  cursor: default;
 }
 
 .open-detail {
@@ -417,34 +399,6 @@ select:focus {
   margin: 11px 0 0;
   color: var(--ink);
   font-size: 14px;
-}
-
-.publication-copy {
-  margin-top: 12px;
-  padding: 10px;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: #faf8fc;
-}
-
-.publication-copy strong {
-  display: block;
-  color: var(--purple);
-  font-size: 12px;
-  margin-bottom: 5px;
-}
-
-.publication-copy p {
-  margin: 0;
-  color: var(--ink);
-  font-size: 14px;
-  line-height: 1.35;
-  white-space: pre-wrap;
-}
-
-.publication-copy.comment {
-  background: #f7fcff;
-  border-color: rgba(22,134,184,.24);
 }
 
 .muted-note {
@@ -788,8 +742,6 @@ select:focus {
 }
 
 #orderDialog,
-#publicationDialog,
-#manualPublicationDialog,
 #saleDialog,
 #purchaseDialog {
   width: min(94vw, 540px);
@@ -801,8 +753,6 @@ select:focus {
 }
 
 #orderDialog::backdrop,
-#publicationDialog::backdrop,
-#manualPublicationDialog::backdrop,
 #saleDialog::backdrop,
 #purchaseDialog::backdrop {
   background: rgba(36,16,54,.45);

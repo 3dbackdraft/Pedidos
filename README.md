@@ -1,11 +1,10 @@
 # Organizador de pedidos - 3D Backdraft
 
-App simple para manejar pedidos, tareas de publicacion y billeteras conectadas a Google Sheets con Apps Script.
+App simple para agendar pedidos, registrar ventas y entender las billeteras de Iri y mama con Google Sheets y Apps Script.
 
 ## Vistas principales
 
 - Pedidos
-- Publicar
 - Ventas
 - Billetera Iri
 - Billetera mama
@@ -24,26 +23,21 @@ Dentro de Pedidos quedan estas listas:
 - Deudores
 - Activos
 
-Cuando un pedido sale de **Para hacer**, la app pregunta si tambien hay que publicarlo:
+El recorrido es:
 
-- Si aceptas, el pedido pasa a **Para entregar** y se crean tareas pendientes en **Publicar**.
-- Si cancelas, el pedido pasa solo a **Para entregar**.
+```txt
+Para hacer -> Para entregar -> Para cobrar -> Finalizado
+```
 
-Desde **Para entregar** pasa a **Para cobrar**. Desde **Para cobrar** puede terminar como **Finalizado** o como **Deudor**.
+Si el pedido no se cobra, puede pasar de **Para cobrar** a **Deudor**.
 
-## Publicar
-
-**Publicar** es una vista de tareas pendientes, no un estado extra del pedido.
-
-Cada tarea puede ser para Instagram, Mercado Libre o ambos. Al marcarla como publicada, el flujo termina ahi. Tambien se pueden crear publicaciones manuales para usarlas solo como tarea pendiente.
-
-Las publicaciones creadas desde **Publicar** quedan con estado interno `Solo publicar`: no aparecen en `Para entregar`, no pasan a `Para cobrar` y no entran al flujo de ventas/pedidos. Si se desmarca Instagram o Mercado Libre, solo se crea la tarea del canal seleccionado.
+Cuando un pedido pasa a **Finalizado**, Apps Script registra el cobro en las billeteras usando el reparto cargado en el pedido.
 
 ## Ventas
 
 La vista **Ventas** permite cargar ingresos que no nacen de un pedido.
 
-Cada venta suelta pide el total y el reparto:
+Cada venta suelta pide:
 
 - Fecha
 - Detalle
@@ -52,7 +46,7 @@ Cada venta suelta pide el total y el reparto:
 - Para mama
 - Referencia
 
-Por defecto propone 50% y 50%. Al guardar, crea dos movimientos de tipo `Venta`: uno para `iri` y otro para `mama`. Estas ventas aparecen tambien en el historial de ingresos de la billetera correspondiente y se pueden editar por separado.
+Por defecto propone 50% y 50%. Al guardar, crea dos movimientos de tipo `Venta`: uno para `iri` y otro para `mama`.
 
 ## Billeteras
 
@@ -63,14 +57,7 @@ Cada pedido tiene reparto editable:
 
 Por defecto se propone 50% y 50% del precio total. Se puede editar cuando el cobro real no corresponde a ese reparto.
 
-Cuando un pedido pasa a **Finalizado**, Apps Script registra dos movimientos de cobro:
-
-- Billetera Iri: usa `Parte Iri`.
-- Billetera mama: usa `Parte mama`.
-
-Cada compra queda asociada a la billetera elegida.
-
-Dentro de cada billetera se muestran dos historiales separados:
+Dentro de cada billetera se muestran:
 
 - Historial de compras
 - Historial de ingresos
@@ -79,10 +66,16 @@ Los ingresos incluyen cobros que vienen de pedidos y ventas sueltas. Desde ese h
 
 ## Hojas usadas
 
-La pestaña principal debe llamarse:
+Pedidos:
 
 ```txt
 BASE PEDIDOS
+```
+
+Columnas:
+
+```txt
+ID, Fecha carga, Pedido, Cliente, Precio unitario, Cantidad, Precio total, Precio, Seña, Parte Iri, Parte mama, Estado, Fecha compromiso, Nota, Actualizado
 ```
 
 Compras:
@@ -109,26 +102,13 @@ Columnas:
 ID, Fecha, Tipo, Detalle, Monto, Billetera, Referencia, Pedido ID, Actualizado
 ```
 
-Publicaciones:
-
-```txt
-PUBLICACIONES
-```
-
-Columnas:
-
-```txt
-ID, Fecha, Producto, Referencia, Canal, Estado, Texto, Comentario, Pedido ID, Actualizado
-```
-
-Apps Script crea esta hoja con `setup()`. Las publicaciones manuales y las tareas creadas desde pedidos se guardan ahi por canal.
-
 ## Pasos para actualizar Apps Script
 
 1. Copiar todo `apps-script.gs` y pegarlo en `Code.gs`.
 2. Guardar.
 3. Ejecutar `setup()`.
-4. Ir a **Implementar > Administrar implementaciones > Editar > Nueva version**.
-5. Mantener acceso como **Cualquier persona** y ejecucion como **Yo**.
+4. Ejecutar una vez `limpiarPublicacionesDePlanilla()` para borrar la hoja vieja `PUBLICACIONES`, limpiar columnas antiguas y sacar tareas viejas del listado de pedidos.
+5. Ir a **Implementar > Administrar implementaciones > Editar > Nueva version**.
+6. Mantener acceso como **Cualquier persona** y ejecucion como **Yo**.
 
 `setup()` conserva datos existentes y agrega encabezados faltantes.

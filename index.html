@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>3D Backdraft · Pedidos</title>
-  <link rel="stylesheet" href="styles.css?v=9" />
+  <title>3D Backdraft - Pedidos</title>
+  <link rel="stylesheet" href="styles.css?v=10" />
 </head>
 
 <body>
@@ -30,7 +30,6 @@
 
     <nav class="view-tabs" aria-label="Vistas">
       <button class="view-tab active" data-view="pedidos">Pedidos</button>
-      <button class="view-tab" data-view="publicar">Publicar</button>
       <button class="view-tab" data-view="ventas">Ventas</button>
       <button class="view-tab" data-view="billetera-iri">Billetera Iri</button>
       <button class="view-tab" data-view="billetera-mama">Billetera mama</button>
@@ -52,8 +51,8 @@
           <span>Ordenar</span>
 
           <select id="sortSelect">
-            <option value="nuevos">Más nuevos primero</option>
-            <option value="viejos">Más viejos primero</option>
+            <option value="nuevos">Mas nuevos primero</option>
+            <option value="viejos">Mas viejos primero</option>
             <option value="cliente">Cliente A-Z</option>
             <option value="deuda">Mayor deuda primero</option>
             <option value="monto">Mayor venta primero</option>
@@ -79,24 +78,9 @@
 
     </section>
 
-    <section id="publicationView" class="hidden">
-
-      <section class="toolbar publication-toolbar">
-        <div>
-          <p class="eyebrow mini">Tareas</p>
-          <h2>Para publicar</h2>
-        </div>
-
-        <button id="newManualPublicationBtn" class="secondary compact" type="button">+ Publicacion</button>
-      </section>
-
-      <section id="publicationList" class="orders-list"></section>
-
-    </section>
-
     <section id="salesView" class="hidden">
 
-      <section class="toolbar publication-toolbar">
+      <section class="toolbar section-toolbar">
         <div>
           <p class="eyebrow mini">Ingresos</p>
           <h2>Ventas sin pedido</h2>
@@ -141,7 +125,7 @@
       </section>
 
       <section class="dashboard-grid wallet-grid">
-        <section class="summary-wrap" aria-label="Ultimas compras">
+        <section class="summary-wrap" aria-label="Historial de compras">
           <div class="inline-head">
             <h2>Historial de compras</h2>
             <button id="newPurchaseBtnInline" class="ghost mini-btn" type="button" onclick="document.getElementById('newPurchaseBtn').click()">+</button>
@@ -149,7 +133,7 @@
           <section class="purchase-list" id="purchaseList"></section>
         </section>
 
-        <section class="summary-wrap" aria-label="Lectura de billetera">
+        <section class="summary-wrap" aria-label="Historial de ingresos">
           <div class="inline-head">
             <h2>Historial de ingresos</h2>
             <button class="ghost mini-btn" type="button" onclick="document.getElementById('newSaleBtn').click()">+</button>
@@ -172,14 +156,12 @@
     <form id="orderForm" method="dialog" class="form-card">
 
       <div class="dialog-head">
-
         <div>
-          <p class="eyebrow mini">Carga rápida</p>
+          <p class="eyebrow mini">Carga rapida</p>
           <h2 id="dialogTitle">Nuevo pedido</h2>
         </div>
 
         <button type="button" id="closeDialogBtn" class="ghost">×</button>
-
       </div>
 
       <input type="hidden" id="orderId" />
@@ -195,7 +177,7 @@
       </label>
 
       <label>
-        Para quién
+        Para quien
         <input
           id="cliente"
           type="text"
@@ -286,11 +268,6 @@
         </select>
       </label>
 
-      <label id="publishField" class="check-row">
-        <input id="publicar" type="checkbox" />
-        <span>Pendiente de publicar</span>
-      </label>
-
       <label>
         Nota
         <textarea
@@ -308,137 +285,17 @@
 
   </dialog>
 
-  <dialog id="publicationDialog">
-
-    <form id="publicationForm" method="dialog" class="form-card">
-
-      <div class="dialog-head">
-
-        <div>
-          <p class="eyebrow mini">Publicación</p>
-          <h2 id="publicationTitle">Publicar</h2>
-          <p id="publicationProduct" class="dialog-subtitle"></p>
-        </div>
-
-        <button type="button" id="closePublicationDialogBtn" class="ghost">×</button>
-
-      </div>
-
-      <input type="hidden" id="publicationOrderId" />
-      <input type="hidden" id="publicationChannel" />
-
-      <label>
-        Info editable para publicar
-        <textarea
-          id="publicationText"
-          rows="5"
-          placeholder="Texto, título, descripción, medidas, hashtags o detalle del producto..."
-        ></textarea>
-      </label>
-
-      <label>
-        Comentario
-        <textarea
-          id="publicationComment"
-          rows="3"
-          placeholder="Pendientes, fotos que faltan, precio sugerido, variantes, etc."
-        ></textarea>
-      </label>
-
-      <label>
-        Estado de publicación
-        <select id="publicationStatus">
-          <option>Pendiente</option>
-          <option>Publicado</option>
-        </select>
-      </label>
-
-      <button class="primary full" type="submit">
-        Guardar publicación
-      </button>
-
-    </form>
-
-  </dialog>
-
-  <dialog id="manualPublicationDialog">
-
-    <form id="manualPublicationForm" method="dialog" class="form-card">
-
-      <div class="dialog-head">
-
-        <div>
-          <p class="eyebrow mini">Manual</p>
-          <h2>Nueva publicación</h2>
-        </div>
-
-        <button type="button" id="closeManualPublicationDialogBtn" class="ghost">×</button>
-
-      </div>
-
-      <label>
-        Producto / publicación *
-        <textarea
-          id="manualPublicationText"
-          rows="4"
-          placeholder="Ej: Mate personalizado, medidas, color, precio sugerido..."
-          required
-        ></textarea>
-      </label>
-
-      <label>
-        Referencia / cliente
-        <input
-          id="manualPublicationClient"
-          type="text"
-          placeholder="Opcional"
-        />
-      </label>
-
-      <fieldset class="channel-field">
-        <legend>Publicar en</legend>
-
-        <label class="check-row">
-          <input id="manualInstagram" type="checkbox" checked />
-          <span>Instagram</span>
-        </label>
-
-        <label class="check-row">
-          <input id="manualMercadoLibre" type="checkbox" checked />
-          <span>Mercado Libre</span>
-        </label>
-      </fieldset>
-
-      <label>
-        Comentario
-        <textarea
-          id="manualPublicationComment"
-          rows="3"
-          placeholder="Fotos pendientes, variantes, precio, idea de copy..."
-        ></textarea>
-      </label>
-
-      <button class="primary full" type="submit">
-        Crear publicación
-      </button>
-
-    </form>
-
-  </dialog>
-
   <dialog id="saleDialog">
 
     <form id="saleForm" method="dialog" class="form-card">
 
       <div class="dialog-head">
-
         <div>
           <p class="eyebrow mini">Ventas</p>
           <h2 id="saleDialogTitle">Nueva venta</h2>
         </div>
 
-        <button type="button" id="closeSaleDialogBtn" class="ghost">Ã—</button>
-
+        <button type="button" id="closeSaleDialogBtn" class="ghost">×</button>
       </div>
 
       <input type="hidden" id="saleId" />
@@ -526,14 +383,12 @@
     <form id="purchaseForm" method="dialog" class="form-card">
 
       <div class="dialog-head">
-
         <div>
           <p class="eyebrow mini">Compras</p>
           <h2 id="purchaseDialogTitle">Nueva compra</h2>
         </div>
 
         <button type="button" id="closePurchaseDialogBtn" class="ghost">×</button>
-
       </div>
 
       <input type="hidden" id="purchaseId" />
@@ -552,7 +407,7 @@
       </label>
 
       <label>
-        Qué se compró *
+        Que se compro *
         <input
           id="purchaseConcept"
           type="text"
@@ -590,7 +445,7 @@
 
   </dialog>
 
-  <script src="app.js?v=9"></script>
+  <script src="app.js?v=10"></script>
 
 </body>
 </html>

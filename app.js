@@ -1,10 +1,7 @@
 const API_URL = "https://script.google.com/macros/s/AKfycbzxZw_6sg86FlLSfnEkk4wvOfvdk2Xpr8WIjet0w3bwVe7PMzZlpMaoKzvGB0omy_Ym/exec";
 
 const DEFAULT_STATUS = "Para hacer";
-const PUBLICATION_ONLY_STATUS = "Solo publicar";
-const HIDDEN_STATUSES = ["Finalizado", PUBLICATION_ONLY_STATUS];
-const PUBLISH_PENDING = "Pendiente";
-const PUBLISH_DONE = "Publicado";
+const HIDDEN_STATUSES = ["Finalizado", "Solo publicar"];
 const WALLETS = {
   iri: {
     key: "iri",
@@ -17,29 +14,10 @@ const WALLETS = {
     saleField: "shareMama"
   }
 };
-const PUBLISH_CHANNELS = {
-  instagram: {
-    key: "instagram",
-    label: "Instagram",
-    icon: "📱",
-    statusField: "instagramEstado",
-    textField: "instagramTexto",
-    commentField: "instagramComentario"
-  },
-  mercadoLibre: {
-    key: "mercadoLibre",
-    label: "Mercado Libre",
-    icon: "🛒",
-    statusField: "mercadoLibreEstado",
-    textField: "mercadoLibreTexto",
-    commentField: "mercadoLibreComentario"
-  }
-};
 
 let orders = [];
 let purchases = [];
 let movements = [];
-let publications = [];
 let currentFilter = "Para hacer";
 let currentSort = "nuevos";
 let currentView = "pedidos";
@@ -49,7 +27,6 @@ let walletDateTo = "";
 let savingOrder = false;
 let savingPurchase = false;
 let savingSale = false;
-let savingManualPublication = false;
 
 const $ = (id) => document.getElementById(id);
 
@@ -61,11 +38,6 @@ const purchaseDialog = $("purchaseDialog");
 const purchaseForm = $("purchaseForm");
 const saleDialog = $("saleDialog");
 const saleForm = $("saleForm");
-const publicationDialog = $("publicationDialog");
-const publicationForm = $("publicationForm");
-const manualPublicationDialog = $("manualPublicationDialog");
-const manualPublicationForm = $("manualPublicationForm");
-const publicationList = $("publicationList");
 const salesList = $("salesList");
 
 function uid(prefix = "PED") {
@@ -76,15 +48,10 @@ function uid(prefix = "PED") {
 }
 
 function money(value) {
-  if (value === "" || value === null || value === undefined) {
-    return "$ 0";
-  }
+  if (value === "" || value === null || value === undefined) return "$ 0";
 
   const n = Number(value);
-
-  if (Number.isNaN(n)) {
-    return "$ 0";
-  }
+  if (Number.isNaN(n)) return "$ 0";
 
   return n.toLocaleString("es-AR", {
     style: "currency",
@@ -98,29 +65,9 @@ function todayISO() {
 }
 
 function normalizedStatus(status) {
-  if (status === "Hecho" || status === "Entregado") {
-    return "Para entregar";
-  }
-
-  if (status === "Espera de pago") {
-    return "Para cobrar";
-  }
-
+  if (status === "Hecho" || status === "Entregado") return "Para entregar";
+  if (status === "Espera de pago") return "Para cobrar";
   return status || DEFAULT_STATUS;
-}
-
-function isPublicationOnly(order) {
-  const status = normalizedStatus(order?.estado);
-  const hasPrice = totalPrice(order) > 0 || numberValue(order?.sena) > 0;
-  const hasPublicationTask = publishPending(order);
-
-  return normalizedStatus(order?.estado) === PUBLICATION_ONLY_STATUS ||
-    String(order?.id || "").startsWith("PUB-") ||
-    (
-      status === "Para entregar" &&
-      !hasPrice &&
-      hasPublicationTask
-    );
 }
 
 function numberValue(value) {
@@ -129,13 +76,13 @@ function numberValue(value) {
 }
 
 function totalPrice(order) {
-  const explicitTotal = numberValue(order.precioTotal);
+  const explicitTotal = numberValue(order?.precioTotal);
   if (explicitTotal > 0) return explicitTotal;
 
-  const legacyPrice = numberValue(order.precio);
+  const legacyPrice = numberValue(order?.precio);
   if (legacyPrice > 0) return legacyPrice;
 
-  return numberValue(order.precioUnitario) * numberValue(order.cantidad);
+  return numberValue(order?.precioUnitario) * numberValue(order?.cantidad);
 }
 
 function defaultShare(order) {
@@ -145,7 +92,6 @@ function defaultShare(order) {
 function walletShare(order, walletKey) {
   const wallet = WALLETS[walletKey] || WALLETS.iri;
   const explicit = numberValue(order?.[wallet.saleField]);
-
   return explicit > 0 ? explicit : defaultShare(order);
 }
 
@@ -162,14 +108,32 @@ function movementWallet(movement) {
   return movement?.billetera ? normalizeWallet(movement.billetera) : "";
 }
 
-function isPurchaseMovement(movement) {
-  return String(movement?.tipo || "").toLowerCase() === "compra" ||
-    movementAmount(movement) < 0;
-}
-
 function isIncomeMovement(movement) {
   const type = String(movement?.tipo || "").toLowerCase();
   return ["cobro", "venta"].includes(type) && movementAmount(movement) > 0;
+}
+
+function movementDate(value) {
+  return value?.actualizado || value?.fecha || value?.fechaCarga || "";
+}
+
+function dateOnly(value) {
+  return String(value || "").slice(0, 10);
+}
+
+function inWalletDateRange(value) {
+  const date = dateOnly(value);
+
+  if (!date) return !walletDateFrom && !walletDateTo;
+  if (walletDateFrom && date < walletDateFrom) return false;
+  if (walletDateTo && date > walletDateTo) return false;
+
+  return true;
+}
+
+function filterByWalletDate(data, getDate) {
+  if (!walletDateFrom && !walletDateTo) return data;
+  return data.filter((item) => inWalletDateRange(getDate(item)));
 }
 
 function walletMovements() {
@@ -201,118 +165,20 @@ function groupedManualSales() {
       referencia: movement.referencia,
       total: 0,
       iri: null,
-      mama: null,
-      items: []
+      mama: null
     };
 
     group.fecha = movementDate(movement) > movementDate(group) ? movement.fecha : group.fecha;
     group.total += movementAmount(movement);
-    group.items.push(movement);
 
-    if (normalizeWallet(movement.billetera) === "iri") {
-      group.iri = movement;
-    }
-
-    if (normalizeWallet(movement.billetera) === "mama") {
-      group.mama = movement;
-    }
+    if (normalizeWallet(movement.billetera) === "iri") group.iri = movement;
+    if (normalizeWallet(movement.billetera) === "mama") group.mama = movement;
 
     groups.set(key, group);
   });
 
   return [...groups.values()]
     .sort((a, b) => movementDate(b).localeCompare(movementDate(a)));
-}
-
-function publishPending(order) {
-  if (!order) return false;
-  return publicationTasks(order).some((task) => task.pending);
-}
-
-function publicationStatus(order, channel) {
-  return String(order?.[channel.statusField] || "").trim();
-}
-
-function publicationPending(order, channel) {
-  const status = publicationStatus(order, channel);
-  return status.toLowerCase() === PUBLISH_PENDING.toLowerCase();
-}
-
-function publicationDone(order, channel) {
-  const status = publicationStatus(order, channel);
-  return status.toLowerCase() === PUBLISH_DONE.toLowerCase();
-}
-
-function publicationText(order, channel) {
-  return order?.[channel.textField] || order?.pedido || "";
-}
-
-function publicationComment(order, channel) {
-  return order?.[channel.commentField] || "";
-}
-
-function publicationTasks(order) {
-  if (!order) return [];
-
-  return Object.values(PUBLISH_CHANNELS).map((channel) => ({
-    source: "order",
-    order,
-    channel,
-    pending: publicationPending(order, channel),
-    done: publicationDone(order, channel),
-    text: publicationText(order, channel),
-    comment: publicationComment(order, channel)
-  }));
-}
-
-function publicationRowsTasks() {
-  return publications.map((publication) => {
-    const status = String(publication.estado || "").trim();
-    const channelKey = String(publication.canal || "").toLowerCase().includes("mercado")
-      ? "mercadoLibre"
-      : "instagram";
-    const channel = PUBLISH_CHANNELS[channelKey];
-
-    return {
-      source: "publication",
-      publication,
-      order: {
-        id: publication.id,
-        pedido: publication.producto || publication.texto || "Publicacion sin nombre",
-        cliente: publication.referencia || "",
-        fechaCarga: publication.fecha || "",
-        nota: publication.comentario || ""
-      },
-      channel,
-      pending: status.toLowerCase() === PUBLISH_PENDING.toLowerCase(),
-      done: status.toLowerCase() === PUBLISH_DONE.toLowerCase(),
-      text: publication.texto || publication.producto || "",
-      comment: publication.comentario || ""
-    };
-  });
-}
-
-function movementDate(value) {
-  return value?.actualizado || value?.fecha || value?.fechaCarga || "";
-}
-
-function dateOnly(value) {
-  return String(value || "").slice(0, 10);
-}
-
-function inWalletDateRange(value) {
-  const date = dateOnly(value);
-
-  if (!date) return !walletDateFrom && !walletDateTo;
-  if (walletDateFrom && date < walletDateFrom) return false;
-  if (walletDateTo && date > walletDateTo) return false;
-
-  return true;
-}
-
-function filterByWalletDate(data, getDate) {
-  if (!walletDateFrom && !walletDateTo) return data;
-  return data.filter((item) => inWalletDateRange(getDate(item)));
 }
 
 function buildFallbackMovements() {
@@ -330,8 +196,7 @@ function buildFallbackMovements() {
     .filter((o) => ["Finalizado", "Deudor"].includes(normalizedStatus(o.estado)))
     .flatMap((o) => {
       const estado = normalizedStatus(o.estado);
-      const total = totalPrice(o);
-      const debt = Math.max(total - numberValue(o.sena), 0);
+      const debt = Math.max(totalPrice(o) - numberValue(o.sena), 0);
 
       if (estado === "Finalizado") {
         return Object.keys(WALLETS).map((walletKey) => ({
@@ -363,7 +228,6 @@ function buildFallbackMovements() {
 function base64UrlEncodeUnicode(obj) {
   const json = JSON.stringify(obj);
   const bytes = new TextEncoder().encode(json);
-
   let binary = "";
 
   bytes.forEach((b) => {
@@ -390,13 +254,6 @@ function compactOrder(order) {
     shareIri: order.shareIri,
     shareMama: order.shareMama,
     estado: order.estado,
-    publicar: order.publicar,
-    instagramEstado: order.instagramEstado,
-    instagramTexto: order.instagramTexto,
-    instagramComentario: order.instagramComentario,
-    mercadoLibreEstado: order.mercadoLibreEstado,
-    mercadoLibreTexto: order.mercadoLibreTexto,
-    mercadoLibreComentario: order.mercadoLibreComentario,
     nota: order.nota,
     actualizado: order.actualizado
   };
@@ -436,26 +293,6 @@ function api(action, payload = {}) {
     return jsonp(`${API_URL}?${qs.toString()}`);
   }
 
-  if (action === "updatePublish") {
-    const qs = new URLSearchParams({
-      action: "updatePublish",
-      id: payload.id,
-      publicar: payload.publicar
-    });
-
-    return jsonp(`${API_URL}?${qs.toString()}`);
-  }
-
-  if (action === "savePublicationTask") {
-    const encoded = base64UrlEncodeUnicode(payload.task);
-    return jsonp(`${API_URL}?action=savePublicationTask&payload=${encodeURIComponent(encoded)}`);
-  }
-
-  if (action === "savePublication") {
-    const encoded = base64UrlEncodeUnicode(payload.publication);
-    return jsonp(`${API_URL}?action=savePublication&payload=${encodeURIComponent(encoded)}`);
-  }
-
   return Promise.reject(new Error("Accion no reconocida"));
 }
 
@@ -472,11 +309,7 @@ function jsonp(url) {
 
     const timer = setTimeout(() => {
       cleanup();
-      reject(
-        new Error(
-          "No respondio Google Sheets. Revisa la implementacion /exec y permisos."
-        )
-      );
+      reject(new Error("No respondio Google Sheets. Revisa la implementacion /exec y permisos."));
     }, 45000);
 
     function cleanup() {
@@ -489,12 +322,7 @@ function jsonp(url) {
       cleanup();
 
       if (!data || data.ok === false) {
-        reject(
-          new Error(
-            data?.error ||
-            "Error al guardar en Google Sheets"
-          )
-        );
+        reject(new Error(data?.error || "Error al guardar en Google Sheets"));
       } else {
         resolve(data);
       }
@@ -519,46 +347,30 @@ async function loadData() {
 
     orders = (result.data || []).map((o) => {
       const estado = normalizedStatus(o.estado);
-      const hasExplicitChannelStatus = Boolean(o.instagramEstado || o.mercadoLibreEstado);
-      const legacyPending =
-        estado === "Para publicar" ||
-        (
-          String(o.publicar || "").toLowerCase() === PUBLISH_PENDING.toLowerCase() &&
-          !hasExplicitChannelStatus
-        );
-
-      return {
+      const normalizedOrder = {
         ...o,
-        estado: estado === "Para publicar" ? "Para entregar" : estado,
-        instagramEstado: legacyPending && !o.instagramEstado
-          ? PUBLISH_PENDING
-          : o.instagramEstado,
-        mercadoLibreEstado: legacyPending && !o.mercadoLibreEstado
-          ? PUBLISH_PENDING
-          : o.mercadoLibreEstado,
-        instagramTexto: o.instagramTexto || o.pedido || "",
-        mercadoLibreTexto: o.mercadoLibreTexto || o.pedido || "",
+        estado,
         shareIri: o.shareIri || defaultShare(o),
-        shareMama: o.shareMama || defaultShare(o),
-        publicar: legacyPending ? PUBLISH_PENDING : o.publicar
+        shareMama: o.shareMama || defaultShare(o)
       };
+
+      return normalizedOrder;
     });
 
     purchases = (result.purchases || []).map((p) => ({
       ...p,
       billetera: normalizeWallet(p.billetera)
     }));
+
     movements = (result.movements || []).map((m) => ({
       ...m,
       billetera: m.billetera ? normalizeWallet(m.billetera) : ""
     }));
-    publications = result.publications || [];
 
     render();
 
     statusMsg.textContent =
       "Conectado a Google Sheets. Cambios guardados en BASE PEDIDOS, COMPRAS y MOVIMIENTOS.";
-
     statusMsg.className = "status-msg ok";
   } catch (err) {
     statusMsg.textContent = err.message;
@@ -568,14 +380,7 @@ async function loadData() {
 
 function activeOrders() {
   return orders.filter((o) =>
-    !HIDDEN_STATUSES.includes(normalizedStatus(o.estado)) &&
-    !isPublicationOnly(o)
-  );
-}
-
-function publicationOrders() {
-  return orders.filter((o) =>
-    normalizedStatus(o.estado) !== "Finalizado"
+    !HIDDEN_STATUSES.includes(normalizedStatus(o.estado))
   );
 }
 
@@ -585,10 +390,6 @@ function renderSummary() {
   const counts = {
     "Para hacer": active.filter((o) => normalizedStatus(o.estado) === "Para hacer").length,
     "Para entregar": active.filter((o) => normalizedStatus(o.estado) === "Para entregar").length,
-    "Para publicar": active.reduce((sum, o) =>
-      sum + publicationTasks(o).filter((task) => task.pending).length,
-      0
-    ),
     "Para cobrar": active.filter((o) => normalizedStatus(o.estado) === "Para cobrar").length,
     "Deudor": active.filter((o) => normalizedStatus(o.estado) === "Deudor").length
   };
@@ -607,12 +408,6 @@ function renderSummary() {
     </div>
 
     <div class="summary-card">
-      <div class="summary-icon">📸</div>
-      <strong>${counts["Para publicar"]}</strong>
-      <span>Para publicar</span>
-    </div>
-
-    <div class="summary-card">
       <div class="summary-icon">💵</div>
       <strong>${counts["Para cobrar"]}</strong>
       <span>Para cobrar</span>
@@ -627,10 +422,7 @@ function renderSummary() {
 }
 
 function renderMetrics() {
-  const scopedOrders = filterByWalletDate(
-    orders.filter((o) => !isPublicationOnly(o)),
-    movementDate
-  );
+  const scopedOrders = filterByWalletDate(orders, movementDate);
   const scopedPurchases = filterByWalletDate(
     purchases.filter((p) => normalizeWallet(p.billetera) === currentWallet),
     (p) => p.fecha || p.actualizado
@@ -692,7 +484,7 @@ function renderMetrics() {
     </div>
 
     <div class="metric-card">
-      <span>En producción</span>
+      <span>En produccion</span>
       <strong>${money(inProductionTotal)}</strong>
     </div>
 
@@ -714,8 +506,8 @@ function renderMetrics() {
     </article>
 
     <article class="wallet-note">
-      <strong>Trabajo que todavía puede convertirse en cobro</strong>
-      <span>Pedidos para entregar y en producción: ${money(toDeliverTotal + inProductionTotal)}.</span>
+      <strong>Trabajo que todavia puede convertirse en cobro</strong>
+      <span>Pedidos para entregar y en produccion: ${money(toDeliverTotal + inProductionTotal)}.</span>
     </article>
   `;
 }
@@ -748,6 +540,7 @@ function renderMovements() {
   $("incomeList").innerHTML = data.length
     ? data.map((m) => {
       const amount = numberValue(m.monto);
+
       return `
         <article class="movement-item in">
           <div>
@@ -789,24 +582,16 @@ function sortOrders(data) {
   const sorted = [...data];
 
   if (currentSort === "nuevos") {
-    sorted.sort((a, b) =>
-      (b.fechaCarga || "").localeCompare(a.fechaCarga || "")
-    );
+    sorted.sort((a, b) => (b.fechaCarga || "").localeCompare(a.fechaCarga || ""));
   }
 
   if (currentSort === "viejos") {
-    sorted.sort((a, b) =>
-      (a.fechaCarga || "").localeCompare(b.fechaCarga || "")
-    );
+    sorted.sort((a, b) => (a.fechaCarga || "").localeCompare(b.fechaCarga || ""));
   }
 
   if (currentSort === "cliente") {
     sorted.sort((a, b) =>
-      (a.cliente || "").localeCompare(
-        b.cliente || "",
-        "es",
-        { sensitivity: "base" }
-      )
+      (a.cliente || "").localeCompare(b.cliente || "", "es", { sensitivity: "base" })
     );
   }
 
@@ -814,7 +599,6 @@ function sortOrders(data) {
     sorted.sort((a, b) => {
       const deudaA = totalPrice(a) - numberValue(a.sena);
       const deudaB = totalPrice(b) - numberValue(b.sena);
-
       return deudaB - deudaA;
     });
   }
@@ -832,29 +616,18 @@ function render() {
   renderPurchases();
   renderMovements();
   renderSales();
-  renderPublicationTasks();
   renderView();
 
-  const q = $("searchInput")
-    .value
-    .toLowerCase()
-    .trim();
-
+  const q = $("searchInput").value.toLowerCase().trim();
   let data = activeOrders();
 
   if (currentFilter !== "Todos") {
-    data = currentFilter === "Para publicar"
-      ? data.filter(publishPending)
-      : data.filter((o) =>
-          normalizedStatus(o.estado) === currentFilter
-        );
+    data = data.filter((o) => normalizedStatus(o.estado) === currentFilter);
   }
 
   if (q) {
     data = data.filter((o) =>
-      `${o.pedido} ${o.cliente} ${o.nota}`
-        .toLowerCase()
-        .includes(q)
+      `${o.pedido} ${o.cliente} ${o.nota}`.toLowerCase().includes(q)
     );
   }
 
@@ -873,40 +646,8 @@ function render() {
   list.innerHTML = data.map(orderCard).join("");
 }
 
-function renderPublicationTasks() {
-  const q = $("searchInput")
-    .value
-    .toLowerCase()
-    .trim();
-
-  let data = publicationOrders().filter((order) => !isPublicationOnly(order));
-
-  if (q) {
-    data = data.filter((o) =>
-      `${o.pedido} ${o.cliente} ${o.nota}`
-        .toLowerCase()
-        .includes(q)
-    );
-  }
-
-  const orderTasks = data.flatMap((order) =>
-    publicationTasks(order).filter((task) => task.pending)
-  );
-  const rowTasks = publicationRowsTasks().filter((task) => task.pending);
-  const tasks = [...rowTasks, ...orderTasks];
-
-  publicationList.innerHTML = tasks.length
-    ? tasks.map(publicationTaskCard).join("")
-    : `
-      <div class="empty">
-        No hay publicaciones pendientes.
-      </div>
-    `;
-}
-
 function renderView() {
   $("ordersView").classList.toggle("hidden", currentView !== "pedidos");
-  $("publicationView").classList.toggle("hidden", currentView !== "publicar");
   $("salesView").classList.toggle("hidden", currentView !== "ventas");
   $("walletView").classList.toggle("hidden", !currentView.startsWith("billetera"));
   $("walletTitle").textContent = (WALLETS[currentWallet] || WALLETS.iri).label;
@@ -916,74 +657,6 @@ function renderView() {
     .forEach((tab) =>
       tab.classList.toggle("active", tab.dataset.view === currentView)
     );
-}
-
-function publicationTaskCard(task) {
-  const { order, channel, text, comment } = task;
-  const total = totalPrice(order);
-
-  return `
-    <details class="order-card para-publicar publication-card">
-
-      <summary class="card-summary publication-summary">
-
-        <div class="mini-icon">
-          ${channel.icon}
-        </div>
-
-        <div class="summary-main">
-
-          <h3 class="order-title">
-            ${escapeHTML(order.pedido || "Publicación sin nombre")}
-          </h3>
-
-          <p class="client-line">
-            ${escapeHTML(order.cliente || "sin referencia")}
-          </p>
-
-        </div>
-
-        <span class="badge">
-          ${escapeHTML(channel.label)}
-        </span>
-
-      </summary>
-
-      <div class="card-detail">
-
-        <div class="meta">
-          <span>Canal: ${channel.icon} ${escapeHTML(channel.label)}</span>
-          <span>Cliente: ${escapeHTML(order.cliente || "sin cliente")}</span>
-          ${total ? `<span>Total: ${money(total)}</span>` : ""}
-          ${order.cantidad ? `<span>Cantidad: ${escapeHTML(order.cantidad)}</span>` : ""}
-        </div>
-
-        <div class="publication-copy">
-          <strong>Info para publicar</strong>
-          <p>${escapeHTML(text || "Sin texto cargado.")}</p>
-        </div>
-
-        <div class="publication-copy comment">
-          <strong>Comentario</strong>
-          <p>${escapeHTML(comment || "Sin comentario.")}</p>
-        </div>
-
-        <div class="card-actions">
-
-          <button class="quick" onclick="openPublicationEditor('${order.id}', '${channel.key}')">
-            ✏️ Editar publicación
-          </button>
-
-          <button onclick="markChannelPublished('${order.id}', '${channel.key}', '${task.source}')">
-            ✅ Marcar publicado
-          </button>
-
-        </div>
-
-      </div>
-
-    </details>
-  `;
 }
 
 function orderCard(o) {
@@ -996,29 +669,18 @@ function orderCard(o) {
       ? "deudor"
       : estado === "Para cobrar"
         ? "espera"
-        : publishPending(o)
-          ? "para-publicar"
-          : estado === "Para entregar"
-            ? "para-entregar"
-            : "para-hacer";
+        : estado === "Para entregar"
+          ? "para-entregar"
+          : "para-hacer";
 
   const icon =
     estado === "Deudor"
       ? "⚠️"
       : estado === "Para cobrar"
         ? "💵"
-        : publishPending(o)
-          ? "📸"
-          : estado === "Para entregar"
-            ? "🚗"
-            : "🖨️";
-
-  const badge = publishPending(o) && estado === "Para entregar"
-    ? "Para entregar + publicar"
-    : estado;
-  const pendingLabels = publicationTasks(o)
-    .filter((task) => task.pending)
-    .map((task) => task.channel.label);
+        : estado === "Para entregar"
+          ? "🚗"
+          : "🖨️";
 
   return `
     <details class="order-card ${css}">
@@ -1030,7 +692,6 @@ function orderCard(o) {
         </div>
 
         <div class="summary-main">
-
           <h3 class="order-title">
             ${escapeHTML(o.pedido || "Pedido sin nombre")}
           </h3>
@@ -1038,11 +699,10 @@ function orderCard(o) {
           <p class="client-line">
             Para: ${escapeHTML(o.cliente || "sin cliente")}
           </p>
-
         </div>
 
         <span class="badge">
-          ${escapeHTML(badge)}
+          ${escapeHTML(estado)}
         </span>
 
       </summary>
@@ -1050,37 +710,14 @@ function orderCard(o) {
       <div class="card-detail">
 
         <div class="meta">
-
           <span>Unitario: ${money(o.precioUnitario || total)}</span>
           <span>Cantidad: ${escapeHTML(o.cantidad || 1)}</span>
           <span>Total: ${money(total)}</span>
           <span>Iri: ${money(walletShare(o, "iri"))}</span>
           <span>Mama: ${money(walletShare(o, "mama"))}</span>
-
-          ${
-            o.sena
-              ? `<span>Seña/pagado: ${money(o.sena)}</span>`
-              : ""
-          }
-
-          ${
-            total
-              ? `<span>Debe: ${money(Math.max(debe, 0))}</span>`
-              : ""
-          }
-
-          ${
-            o.fechaCarga
-              ? `<span>Cargado: ${escapeHTML(o.fechaCarga)}</span>`
-              : ""
-          }
-
-          ${
-            pendingLabels.length
-              ? `<span>Publicar: ${escapeHTML(pendingLabels.join(" + "))}</span>`
-              : ""
-          }
-
+          ${o.sena ? `<span>Seña/pagado: ${money(o.sena)}</span>` : ""}
+          ${total ? `<span>Debe: ${money(Math.max(debe, 0))}</span>` : ""}
+          ${o.fechaCarga ? `<span>Cargado: ${escapeHTML(o.fechaCarga)}</span>` : ""}
         </div>
 
         ${
@@ -1090,13 +727,11 @@ function orderCard(o) {
         }
 
         <div class="card-actions">
-
           ${actionButtons(o)}
 
           <button onclick="editOrder('${o.id}')">
             ✏️ Editar
           </button>
-
         </div>
 
       </div>
@@ -1108,26 +743,17 @@ function orderCard(o) {
 function actionButtons(o) {
   const id = o.id;
   const estado = normalizedStatus(o.estado);
-  const publishButtons = publicationTasks(o)
-    .filter((task) => task.pending)
-    .map((task) => `
-      <button onclick="openPublicationEditor('${id}', '${task.channel.key}')">
-        ${task.channel.icon} Editar ${task.channel.label}
-      </button>
-    `)
-    .join("");
 
   if (estado === "Para hacer") {
     return `
       <button class="quick" onclick="finishProduction('${id}')">
-        ✅ Sale de producción
+        ✅ Sale de produccion
       </button>
     `;
   }
 
   if (estado === "Para entregar") {
     return `
-      ${publishButtons}
       <button class="quick" onclick="quickStatus('${id}', 'Para cobrar')">
         💵 Entregado · pasar a cobrar
       </button>
@@ -1171,10 +797,7 @@ function escapeHTML(str) {
 function openForm(order = null) {
   form.reset();
 
-  $("dialogTitle").textContent =
-    order
-      ? "Editar pedido"
-      : "Nuevo pedido";
+  $("dialogTitle").textContent = order ? "Editar pedido" : "Nuevo pedido";
 
   const unit = order?.precioUnitario || order?.precio || "";
   const qty = order?.cantidad || (order ? 1 : "");
@@ -1189,12 +812,9 @@ function openForm(order = null) {
   $("sena").value = order?.sena || "";
   $("shareIri").value = order ? (order.shareIri || defaultShare(order)) : "";
   $("shareMama").value = order ? (order.shareMama || defaultShare(order)) : "";
-  $("estado").value =
-    normalizedStatus(order?.estado) || DEFAULT_STATUS;
-  $("publicar").checked = publishPending(order);
+  $("estado").value = normalizedStatus(order?.estado) || DEFAULT_STATUS;
   $("nota").value = order?.nota || "";
   $("stateField").classList.toggle("hidden", !order);
-  $("publishField").classList.add("hidden");
 
   dialog.showModal();
 }
@@ -1226,47 +846,7 @@ function openSaleForm(movement = null) {
   $("saleReference").value = movement?.referencia || "";
   $("saleWallet").closest("label").classList.toggle("hidden", !movement);
   $("saleSplitFields").classList.toggle("hidden", !!movement);
-  $("saleTotalField").querySelector("span")?.remove();
   saleDialog.showModal();
-}
-
-function openManualPublicationForm() {
-  manualPublicationForm.reset();
-  $("manualInstagram").checked = true;
-  $("manualMercadoLibre").checked = true;
-  manualPublicationDialog.showModal();
-}
-
-function openPublicationForm(order, channel) {
-  publicationForm.reset();
-
-  $("publicationOrderId").value = order.id;
-  $("publicationChannel").value = channel.key;
-  $("publicationTitle").textContent = `Publicar en ${channel.label}`;
-  $("publicationProduct").textContent = order.pedido || "Pedido sin nombre";
-  $("publicationText").value = publicationText(order, channel);
-  $("publicationComment").value = publicationComment(order, channel);
-  $("publicationStatus").value = publicationDone(order, channel)
-    ? PUBLISH_DONE
-    : PUBLISH_PENDING;
-
-  publicationDialog.showModal();
-}
-
-function openPublicationRowForm(publication) {
-  publicationForm.reset();
-
-  $("publicationOrderId").value = publication.id;
-  $("publicationChannel").value = "__publication";
-  $("publicationTitle").textContent = `Publicar en ${publication.canal || "canal"}`;
-  $("publicationProduct").textContent = publication.producto || "Publicacion sin nombre";
-  $("publicationText").value = publication.texto || publication.producto || "";
-  $("publicationComment").value = publication.comentario || "";
-  $("publicationStatus").value = String(publication.estado || "").toLowerCase() === PUBLISH_DONE.toLowerCase()
-    ? PUBLISH_DONE
-    : PUBLISH_PENDING;
-
-  publicationDialog.showModal();
 }
 
 function syncTotalFromInputs() {
@@ -1277,180 +857,30 @@ function syncTotalFromInputs() {
     const total = Math.round(unit * qty);
     $("precioTotal").value = total;
 
-    if (!$("shareIri").value) {
-      $("shareIri").value = Math.round(total * 0.5);
-    }
-
-    if (!$("shareMama").value) {
-      $("shareMama").value = Math.round(total * 0.5);
-    }
+    if (!$("shareIri").value) $("shareIri").value = Math.round(total * 0.5);
+    if (!$("shareMama").value) $("shareMama").value = Math.round(total * 0.5);
   }
 }
 
 window.editOrder = function(id) {
   const order = orders.find((o) => o.id === id);
-
-  if (order) {
-    openForm(order);
-  }
+  if (order) openForm(order);
 };
 
 window.editPurchase = function(id) {
   const purchase = purchases.find((p) => p.id === id);
-
-  if (purchase) {
-    openPurchaseForm(purchase);
-  }
+  if (purchase) openPurchaseForm(purchase);
 };
 
 window.editSale = function(id) {
   const movement = movements.find((m) => m.id === id) ||
     buildFallbackMovements().find((m) => m.id === id);
 
-  if (movement) {
-    openSaleForm(movement);
-  }
-};
-
-window.openPublicationEditor = function(id, channelKey) {
-  const order = orders.find((o) => o.id === id);
-  const channel = PUBLISH_CHANNELS[channelKey];
-  const publication = publications.find((p) => p.id === id);
-
-  if (publication) {
-    openPublicationRowForm(publication);
-  } else if (order && channel) {
-    openPublicationForm(order, channel);
-  }
+  if (movement) openSaleForm(movement);
 };
 
 window.finishProduction = async function(id) {
-  const withPhotos = confirm(
-    "Cuando sale de Para hacer: ¿tambien hay que publicarlo porque sacaron fotos?\n\nAceptar: Para publicar\nCancelar: Solo para entregar"
-  );
-
-  const previous = orders;
-
-  orders = orders.map((o) =>
-    o.id === id
-      ? {
-          ...o,
-          estado: "Para entregar",
-          publicar: withPhotos ? PUBLISH_PENDING : "",
-          instagramEstado: withPhotos ? PUBLISH_PENDING : "",
-          instagramTexto: withPhotos ? publicationText(o, PUBLISH_CHANNELS.instagram) : o.instagramTexto,
-          mercadoLibreEstado: withPhotos ? PUBLISH_PENDING : "",
-          mercadoLibreTexto: withPhotos ? publicationText(o, PUBLISH_CHANNELS.mercadoLibre) : o.mercadoLibreTexto,
-          actualizado: new Date().toISOString()
-        }
-      : o
-  );
-
-  render();
-
-  try {
-    await api("updateStatus", { id, estado: "Para entregar" });
-    await api("savePublicationTask", {
-      task: {
-        id,
-        channel: "instagram",
-        estado: withPhotos ? PUBLISH_PENDING : "",
-        texto: orders.find((o) => o.id === id)?.pedido || "",
-        comentario: orders.find((o) => o.id === id)?.instagramComentario || ""
-      }
-    });
-    await api("savePublicationTask", {
-      task: {
-        id,
-        channel: "mercadoLibre",
-        estado: withPhotos ? PUBLISH_PENDING : "",
-        texto: orders.find((o) => o.id === id)?.pedido || "",
-        comentario: orders.find((o) => o.id === id)?.mercadoLibreComentario || ""
-      }
-    });
-    await api("updatePublish", { id, publicar: withPhotos ? PUBLISH_PENDING : "" });
-
-    statusMsg.textContent = withPhotos
-      ? "Pedido enviado a Para entregar y Para publicar."
-      : "Pedido enviado a Para entregar.";
-
-    statusMsg.className = "status-msg ok";
-
-    await loadData();
-  } catch (err) {
-    orders = previous;
-    render();
-    alert(err.message);
-  }
-};
-
-window.markChannelPublished = async function(id, channelKey, source = "order") {
-  const channel = PUBLISH_CHANNELS[channelKey];
-  if (!channel) return;
-
-  if (source === "publication") {
-    const publication = publications.find((p) => p.id === id);
-    if (!publication) return;
-
-    try {
-      await api("savePublication", {
-        publication: {
-          ...publication,
-          estado: PUBLISH_DONE,
-          actualizado: new Date().toISOString()
-        }
-      });
-
-      statusMsg.textContent = `${channel.label} marcado como publicado.`;
-      statusMsg.className = "status-msg ok";
-      await loadData();
-    } catch (err) {
-      alert(err.message);
-    }
-
-    return;
-  }
-
-  const previous = orders;
-
-  orders = orders.map((o) =>
-    o.id === id
-      ? {
-          ...o,
-          [channel.statusField]: PUBLISH_DONE,
-          actualizado: new Date().toISOString()
-        }
-      : o
-  );
-
-  render();
-
-  try {
-    const order = orders.find((o) => o.id === id);
-
-    await api("savePublicationTask", {
-      task: {
-        id,
-        channel: channel.key,
-        estado: PUBLISH_DONE,
-        texto: publicationText(order, channel),
-        comentario: publicationComment(order, channel)
-      }
-    });
-
-    if (!publishPending(order)) {
-      await api("updatePublish", { id, publicar: PUBLISH_DONE });
-    }
-
-    statusMsg.textContent = `${channel.label} marcado como publicado.`;
-    statusMsg.className = "status-msg ok";
-
-    await loadData();
-  } catch (err) {
-    orders = previous;
-    render();
-    alert(err.message);
-  }
+  await quickStatus(id, "Para entregar");
 };
 
 window.quickStatus = async function(id, estado) {
@@ -1469,14 +899,9 @@ window.quickStatus = async function(id, estado) {
   render();
 
   try {
-    await api(
-      "updateStatus",
-      { id, estado }
-    );
+    await api("updateStatus", { id, estado });
 
-    statusMsg.textContent =
-      "Estado actualizado y registrado en Google Sheets.";
-
+    statusMsg.textContent = "Estado actualizado y registrado en Google Sheets.";
     statusMsg.className = "status-msg ok";
 
     await loadData();
@@ -1490,15 +915,10 @@ window.quickStatus = async function(id, estado) {
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
 
-  if (savingOrder) {
-    return;
-  }
-
+  if (savingOrder) return;
   savingOrder = true;
 
-  const submitBtn =
-    form.querySelector('button[type="submit"]');
-
+  const submitBtn = form.querySelector('button[type="submit"]');
   submitBtn.disabled = true;
   submitBtn.textContent = "Guardando...";
 
@@ -1522,54 +942,32 @@ form.addEventListener("submit", async (e) => {
     shareIri: numberValue($("shareIri").value) || Math.round(total * 0.5),
     shareMama: numberValue($("shareMama").value) || Math.round(total * 0.5),
     estado: isNewOrder ? DEFAULT_STATUS : ($("estado").value || DEFAULT_STATUS),
-    publicar: isNewOrder ? "" : (existing?.publicar || ""),
-    instagramEstado: isNewOrder
-      ? ""
-      : existing?.instagramEstado || "",
-    instagramTexto: existing?.instagramTexto || $("pedido").value.trim(),
-    instagramComentario: existing?.instagramComentario || "",
-    mercadoLibreEstado: isNewOrder
-      ? ""
-      : existing?.mercadoLibreEstado || "",
-    mercadoLibreTexto: existing?.mercadoLibreTexto || $("pedido").value.trim(),
-    mercadoLibreComentario: existing?.mercadoLibreComentario || "",
     nota: $("nota").value.trim(),
     actualizado: new Date().toISOString()
   };
 
   if (!order.pedido) {
     savingOrder = false;
-
     submitBtn.disabled = false;
     submitBtn.textContent = "Guardar en Sheet";
-
     return;
   }
 
   try {
     await api("save", { order });
-
     dialog.close();
 
-    statusMsg.textContent =
-      "Pedido guardado en Google Sheets.";
-
+    statusMsg.textContent = "Pedido guardado en Google Sheets.";
     statusMsg.className = "status-msg ok";
 
     await loadData();
 
-    currentFilter =
-      HIDDEN_STATUSES.includes(order.estado)
-        ? "Para hacer"
-        : order.estado;
+    currentFilter = HIDDEN_STATUSES.includes(order.estado) ? "Para hacer" : order.estado;
 
     document
       .querySelectorAll(".tab")
       .forEach((t) =>
-        t.classList.toggle(
-          "active",
-          t.dataset.filter === currentFilter
-        )
+        t.classList.toggle("active", t.dataset.filter === currentFilter)
       );
 
     render();
@@ -1577,7 +975,6 @@ form.addEventListener("submit", async (e) => {
     alert(err.message);
   } finally {
     savingOrder = false;
-
     submitBtn.disabled = false;
     submitBtn.textContent = "Guardar en Sheet";
   }
@@ -1586,15 +983,10 @@ form.addEventListener("submit", async (e) => {
 purchaseForm.addEventListener("submit", async (e) => {
   e.preventDefault();
 
-  if (savingPurchase) {
-    return;
-  }
-
+  if (savingPurchase) return;
   savingPurchase = true;
 
-  const submitBtn =
-    purchaseForm.querySelector('button[type="submit"]');
-
+  const submitBtn = purchaseForm.querySelector('button[type="submit"]');
   submitBtn.disabled = true;
   submitBtn.textContent = "Guardando...";
 
@@ -1633,15 +1025,10 @@ purchaseForm.addEventListener("submit", async (e) => {
 saleForm.addEventListener("submit", async (e) => {
   e.preventDefault();
 
-  if (savingSale) {
-    return;
-  }
-
+  if (savingSale) return;
   savingSale = true;
 
-  const submitBtn =
-    saleForm.querySelector('button[type="submit"]');
-
+  const submitBtn = saleForm.querySelector('button[type="submit"]');
   submitBtn.disabled = true;
   submitBtn.textContent = "Guardando...";
 
@@ -1722,195 +1109,6 @@ saleForm.addEventListener("submit", async (e) => {
   }
 });
 
-manualPublicationForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
-
-  if (savingManualPublication) {
-    return;
-  }
-
-  const instagram = $("manualInstagram").checked;
-  const mercadoLibre = $("manualMercadoLibre").checked;
-
-  if (!instagram && !mercadoLibre) {
-    alert("Elegí Instagram, Mercado Libre o ambos.");
-    return;
-  }
-
-  savingManualPublication = true;
-
-  const submitBtn = manualPublicationForm.querySelector('button[type="submit"]');
-  submitBtn.disabled = true;
-  submitBtn.textContent = "Creando...";
-
-  const text = $("manualPublicationText").value.trim();
-  const comment = $("manualPublicationComment").value.trim();
-  const id = uid("PUB");
-
-  if (!text) {
-    savingManualPublication = false;
-    submitBtn.disabled = false;
-    submitBtn.textContent = "Crear publicación";
-    return;
-  }
-
-  try {
-    const basePublication = {
-      fecha: todayISO(),
-      producto: text,
-      referencia: $("manualPublicationClient").value.trim(),
-      estado: PUBLISH_PENDING,
-      texto: text,
-      comentario: comment,
-      pedidoId: "",
-      actualizado: new Date().toISOString()
-    };
-
-    if (instagram) {
-      await api("savePublication", {
-        publication: {
-          ...basePublication,
-          id: `${id}-instagram`,
-          canal: "Instagram"
-        }
-      });
-    }
-
-    if (mercadoLibre) {
-      await api("savePublication", {
-        publication: {
-          ...basePublication,
-          id: `${id}-mercadoLibre`,
-          canal: "Mercado Libre"
-        }
-      });
-    }
-    manualPublicationDialog.close();
-    statusMsg.textContent = "Publicación manual creada.";
-    statusMsg.className = "status-msg ok";
-    await loadData();
-    currentView = "publicar";
-
-    document
-      .querySelectorAll(".tab")
-      .forEach((t) =>
-        t.classList.toggle(
-          "active",
-          t.dataset.filter === currentFilter
-        )
-      );
-
-    render();
-  } catch (err) {
-    alert(err.message);
-  } finally {
-    savingManualPublication = false;
-    submitBtn.disabled = false;
-    submitBtn.textContent = "Crear publicación";
-  }
-});
-
-publicationForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
-
-  const id = $("publicationOrderId").value;
-  const channelKey = $("publicationChannel").value;
-  const channel = PUBLISH_CHANNELS[channelKey];
-
-  if (!id || (!channel && channelKey !== "__publication")) {
-    return;
-  }
-
-  const status = $("publicationStatus").value;
-  const text = $("publicationText").value.trim();
-  const comment = $("publicationComment").value.trim();
-  const previous = orders;
-
-  if (channelKey === "__publication") {
-    const publication = publications.find((p) => p.id === id);
-    if (!publication) return;
-
-    const submitBtn = publicationForm.querySelector('button[type="submit"]');
-    submitBtn.disabled = true;
-    submitBtn.textContent = "Guardando...";
-
-    try {
-      await api("savePublication", {
-        publication: {
-          ...publication,
-          estado: status,
-          texto: text,
-          comentario: comment,
-          actualizado: new Date().toISOString()
-        }
-      });
-
-      publicationDialog.close();
-      statusMsg.textContent = "Publicacion guardada.";
-      statusMsg.className = "status-msg ok";
-      await loadData();
-    } catch (err) {
-      alert(err.message);
-    } finally {
-      submitBtn.disabled = false;
-      submitBtn.textContent = "Guardar publicación";
-    }
-
-    return;
-  }
-
-  orders = orders.map((o) =>
-    o.id === id
-      ? {
-          ...o,
-          [channel.statusField]: status,
-          [channel.textField]: text,
-          [channel.commentField]: comment,
-          actualizado: new Date().toISOString()
-        }
-      : o
-  );
-
-  render();
-
-  const submitBtn = publicationForm.querySelector('button[type="submit"]');
-  submitBtn.disabled = true;
-  submitBtn.textContent = "Guardando...";
-
-  try {
-    await api("savePublicationTask", {
-      task: {
-        id,
-        channel: channel.key,
-        estado: status,
-        texto: text,
-        comentario: comment
-      }
-    });
-
-    const order = orders.find((o) => o.id === id);
-
-    await api("updatePublish", {
-      id,
-      publicar: publishPending(order)
-        ? PUBLISH_PENDING
-        : PUBLISH_DONE
-    });
-
-    publicationDialog.close();
-    statusMsg.textContent = `Publicacion de ${channel.label} guardada.`;
-    statusMsg.className = "status-msg ok";
-    await loadData();
-  } catch (err) {
-    orders = previous;
-    render();
-    alert(err.message);
-  } finally {
-    submitBtn.disabled = false;
-    submitBtn.textContent = "Guardar publicación";
-  }
-});
-
 $("newOrderBtn").addEventListener("click", () => {
   openForm();
 });
@@ -1922,8 +1120,6 @@ $("newPurchaseBtn").addEventListener("click", () => {
 $("newSaleBtn").addEventListener("click", () => {
   openSaleForm();
 });
-
-$("newManualPublicationBtn").addEventListener("click", openManualPublicationForm);
 
 $("closeDialogBtn").addEventListener("click", () => {
   dialog.close();
@@ -1937,16 +1133,7 @@ $("closeSaleDialogBtn").addEventListener("click", () => {
   saleDialog.close();
 });
 
-$("closePublicationDialogBtn").addEventListener("click", () => {
-  publicationDialog.close();
-});
-
-$("closeManualPublicationDialogBtn").addEventListener("click", () => {
-  manualPublicationDialog.close();
-});
-
 $("syncBtn").addEventListener("click", loadData);
-
 $("searchInput").addEventListener("input", render);
 
 $("sortSelect").addEventListener("change", (e) => {
@@ -1974,27 +1161,20 @@ $("clearWalletDatesBtn").addEventListener("click", () => {
 
 $("precioUnitario").addEventListener("input", syncTotalFromInputs);
 $("cantidad").addEventListener("input", syncTotalFromInputs);
+
 $("precioTotal").addEventListener("input", () => {
   const total = numberValue($("precioTotal").value);
   if (!total) return;
 
-  if (!$("shareIri").value) {
-    $("shareIri").value = Math.round(total * 0.5);
-  }
-
-  if (!$("shareMama").value) {
-    $("shareMama").value = Math.round(total * 0.5);
-  }
+  if (!$("shareIri").value) $("shareIri").value = Math.round(total * 0.5);
+  if (!$("shareMama").value) $("shareMama").value = Math.round(total * 0.5);
 });
 
 $("saleAmount").addEventListener("input", () => {
   const total = numberValue($("saleAmount").value);
   if (!total || $("saleId").value) return;
 
-  if (!$("saleShareIri").value) {
-    $("saleShareIri").value = Math.round(total * 0.5);
-  }
-
+  if (!$("saleShareIri").value) $("saleShareIri").value = Math.round(total * 0.5);
   if (!$("saleShareMama").value) {
     $("saleShareMama").value = Math.max(total - numberValue($("saleShareIri").value), 0);
   }
@@ -2006,14 +1186,10 @@ document
     tab.addEventListener("click", () => {
       document
         .querySelectorAll(".tab")
-        .forEach((t) =>
-          t.classList.remove("active")
-        );
+        .forEach((t) => t.classList.remove("active"));
 
       tab.classList.add("active");
-
       currentFilter = tab.dataset.filter;
-
       render();
     });
   });
@@ -2024,13 +1200,8 @@ document
     tab.addEventListener("click", () => {
       currentView = tab.dataset.view;
 
-      if (currentView === "billetera-iri") {
-        currentWallet = "iri";
-      }
-
-      if (currentView === "billetera-mama") {
-        currentWallet = "mama";
-      }
+      if (currentView === "billetera-iri") currentWallet = "iri";
+      if (currentView === "billetera-mama") currentWallet = "mama";
 
       render();
     });
