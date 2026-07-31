@@ -144,6 +144,15 @@ function doGet(e) {
         purchases: readPurchases_(),
         movements: readMovements_()
       };
+    } else if (action === 'saveSale') {
+      const sale = decodePayload_(params.payload);
+      saveSale_(sale);
+      result = {
+        ok: true,
+        data: readOrders_(),
+        purchases: readPurchases_(),
+        movements: readMovements_()
+      };
     } else if (action === 'updateStatus') {
       updateStatus_(params.id, params.estado);
       result = {
@@ -397,6 +406,40 @@ function saveMovement_(movement) {
   setCellByHeader_(sh, targetRow, map, 'Actualizado', movement.actualizado || now);
 }
 
+function saveSale_(sale) {
+  if (!sale || !sale.id) throw new Error('Venta invalida: falta ID');
+  if (!sale.detalle) throw new Error('Falta detalle de venta');
+
+  const total = number_(sale.total);
+  const shareIri = number_(sale.shareIri) || Math.round(total / 2);
+  const shareMama = number_(sale.shareMama) || Math.max(total - shareIri, 0);
+  const now = sale.actualizado || new Date();
+
+  saveMovement_({
+    id: sale.id + '-IRI',
+    fecha: sale.fecha || today_(),
+    tipo: 'Venta',
+    detalle: sale.detalle,
+    monto: shareIri,
+    billetera: 'iri',
+    referencia: sale.referencia || '',
+    pedidoId: sale.id,
+    actualizado: now
+  });
+
+  saveMovement_({
+    id: sale.id + '-MAMA',
+    fecha: sale.fecha || today_(),
+    tipo: 'Venta',
+    detalle: sale.detalle,
+    monto: shareMama,
+    billetera: 'mama',
+    referencia: sale.referencia || '',
+    pedidoId: sale.id,
+    actualizado: now
+  });
+}
+
 function updateStatus_(id, estado) {
   if (!id) throw new Error('Falta ID');
 
@@ -516,8 +559,32 @@ function setCellByHeader_(sh, row, map, header, value) {
 }
 
 function number_(value) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  let raw = String(value || '').trim();
+  if (!raw) return 0;
+
+  const isNegative = raw.charAt(0) === '-';
+  raw = raw.replace(/[^\d,.]/g, '');
+
+  if (raw.indexOf(',') !== -1 && raw.indexOf('.') !== -1) {
+    raw = raw.replace(/\./g, '').replace(',', '.');
+  } else if (raw.indexOf(',') !== -1) {
+    const commaParts = raw.split(',');
+    const last = commaParts[commaParts.length - 1];
+    raw = last.length === 3
+      ? commaParts.join('')
+      : commaParts.slice(0, -1).join('') + '.' + last;
+  } else if (/^\d{1,3}(\.\d{3})+$/.test(raw)) {
+    raw = raw.replace(/\./g, '');
+  }
+
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return 0;
+
+  return isNegative ? -n : n;
 }
 
 function today_() {
@@ -542,7 +609,16 @@ function formatDateTime_(value) {
 
 function decodePayload_(payload) {
   if (!payload) throw new Error('Falta payload');
-  return JSON.parse(decodeURIComponent(payload));
+  const decoded = decodeURIComponent(payload);
+
+  try {
+    return JSON.parse(decoded);
+  } catch (jsonErr) {
+    const padded = decoded + '===='.slice((decoded.length % 4) || 4);
+    const bytes = Utilities.base64DecodeWebSafe(padded);
+    const json = Utilities.newBlob(bytes).getDataAsString('UTF-8');
+    return JSON.parse(json);
+  }
 }
 
 function output_(obj, callback) {

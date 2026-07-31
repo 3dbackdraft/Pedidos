@@ -27,6 +27,8 @@ let walletDateTo = "";
 let savingOrder = false;
 let savingPurchase = false;
 let savingSale = false;
+let saleSplitAuto = true;
+let updatingSaleSplit = false;
 
 const $ = (id) => document.getElementById(id);
 
@@ -71,8 +73,32 @@ function normalizedStatus(status) {
 }
 
 function numberValue(value) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  let raw = String(value ?? "").trim();
+  if (!raw) return 0;
+
+  const isNegative = raw.startsWith("-");
+  raw = raw.replace(/[^\d,.]/g, "");
+
+  if (raw.includes(",") && raw.includes(".")) {
+    raw = raw.replace(/\./g, "").replace(",", ".");
+  } else if (raw.includes(",")) {
+    const commaParts = raw.split(",");
+    const last = commaParts[commaParts.length - 1];
+    raw = last.length === 3
+      ? commaParts.join("")
+      : commaParts.slice(0, -1).join("") + "." + last;
+  } else if (/^\d{1,3}(\.\d{3})+$/.test(raw)) {
+    raw = raw.replace(/\./g, "");
+  }
+
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return 0;
+
+  return isNegative ? -n : n;
 }
 
 function totalPrice(order) {
@@ -281,6 +307,11 @@ function api(action, payload = {}) {
   if (action === "saveMovement") {
     const encoded = base64UrlEncodeUnicode(payload.movement);
     return jsonp(`${API_URL}?action=saveMovement&payload=${encodeURIComponent(encoded)}`);
+  }
+
+  if (action === "saveSale") {
+    const encoded = base64UrlEncodeUnicode(payload.sale);
+    return jsonp(`${API_URL}?action=saveSale&payload=${encodeURIComponent(encoded)}`);
   }
 
   if (action === "updateStatus") {
@@ -833,6 +864,7 @@ function openPurchaseForm(purchase = null) {
 
 function openSaleForm(movement = null) {
   saleForm.reset();
+  saleSplitAuto = !movement;
   $("saleDialogTitle").textContent = movement ? "Editar ingreso" : "Nueva venta";
   $("saleId").value = movement?.id || "";
   $("saleType").value = movement?.tipo || "Venta";
@@ -847,6 +879,21 @@ function openSaleForm(movement = null) {
   $("saleWallet").closest("label").classList.toggle("hidden", !movement);
   $("saleSplitFields").classList.toggle("hidden", !!movement);
   saleDialog.showModal();
+}
+
+function setSaleSplit(iri, mama) {
+  updatingSaleSplit = true;
+  $("saleShareIri").value = iri ? Math.round(iri) : "";
+  $("saleShareMama").value = mama ? Math.round(mama) : "";
+  updatingSaleSplit = false;
+}
+
+function syncSaleSplitFromTotal() {
+  const total = numberValue($("saleAmount").value);
+  if (!total || $("saleId").value || !saleSplitAuto) return;
+
+  const iri = Math.round(total * 0.5);
+  setSaleSplit(iri, Math.max(total - iri, 0));
 }
 
 function syncTotalFromInputs() {
@@ -1067,30 +1114,15 @@ saleForm.addEventListener("submit", async (e) => {
       const shareIri = numberValue($("saleShareIri").value) || Math.round(total * 0.5);
       const shareMama = numberValue($("saleShareMama").value) || Math.max(total - shareIri, 0);
 
-      await api("saveMovement", {
-        movement: {
-          id: `${saleId}-IRI`,
+      await api("saveSale", {
+        sale: {
+          id: saleId,
           fecha: date,
-          tipo: "Venta",
           detalle: detail,
-          monto: shareIri,
-          billetera: "iri",
+          total,
+          shareIri,
+          shareMama,
           referencia: reference,
-          pedidoId: saleId,
-          actualizado: new Date().toISOString()
-        }
-      });
-
-      await api("saveMovement", {
-        movement: {
-          id: `${saleId}-MAMA`,
-          fecha: date,
-          tipo: "Venta",
-          detalle: detail,
-          monto: shareMama,
-          billetera: "mama",
-          referencia: reference,
-          pedidoId: saleId,
           actualizado: new Date().toISOString()
         }
       });
@@ -1171,13 +1203,25 @@ $("precioTotal").addEventListener("input", () => {
 });
 
 $("saleAmount").addEventListener("input", () => {
-  const total = numberValue($("saleAmount").value);
-  if (!total || $("saleId").value) return;
+  syncSaleSplitFromTotal();
+});
 
-  if (!$("saleShareIri").value) $("saleShareIri").value = Math.round(total * 0.5);
-  if (!$("saleShareMama").value) {
-    $("saleShareMama").value = Math.max(total - numberValue($("saleShareIri").value), 0);
-  }
+$("saleShareIri").addEventListener("input", () => {
+  if (updatingSaleSplit || $("saleId").value) return;
+
+  saleSplitAuto = false;
+  const total = numberValue($("saleAmount").value);
+  const iri = numberValue($("saleShareIri").value);
+  if (total) $("saleShareMama").value = Math.max(total - iri, 0);
+});
+
+$("saleShareMama").addEventListener("input", () => {
+  if (updatingSaleSplit || $("saleId").value) return;
+
+  saleSplitAuto = false;
+  const total = numberValue($("saleAmount").value);
+  const mama = numberValue($("saleShareMama").value);
+  if (total) $("saleShareIri").value = Math.max(total - mama, 0);
 });
 
 document

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>3D Backdraft - Pedidos</title>
-  <link rel="stylesheet" href="styles.css?v=10" />
+  <link rel="stylesheet" href="styles.css?v=11" />
 </head>
 
 <body>
@@ -191,7 +191,8 @@
           Precio unitario
           <input
             id="precioUnitario"
-            type="number"
+            type="text"
+            inputmode="decimal"
             min="0"
             step="1"
             placeholder="0"
@@ -213,7 +214,8 @@
           Precio total
           <input
             id="precioTotal"
-            type="number"
+            type="text"
+            inputmode="decimal"
             min="0"
             step="1"
             placeholder="0"
@@ -226,7 +228,8 @@
         Seña / pagado
         <input
           id="sena"
-          type="number"
+          type="text"
+          inputmode="decimal"
           min="0"
           step="1"
           placeholder="Opcional"
@@ -238,7 +241,8 @@
           Parte Iri
           <input
             id="shareIri"
-            type="number"
+            type="text"
+            inputmode="decimal"
             min="0"
             step="1"
             placeholder="50% automatico"
@@ -249,7 +253,8 @@
           Parte mama
           <input
             id="shareMama"
-            type="number"
+            type="text"
+            inputmode="decimal"
             min="0"
             step="1"
             placeholder="50% automatico"
@@ -329,7 +334,8 @@
         Total venta *
         <input
           id="saleAmount"
-          type="number"
+          type="text"
+          inputmode="decimal"
           min="0"
           step="1"
           placeholder="0"
@@ -342,7 +348,8 @@
           Para Iri
           <input
             id="saleShareIri"
-            type="number"
+            type="text"
+            inputmode="decimal"
             min="0"
             step="1"
             placeholder="50% automatico"
@@ -353,7 +360,8 @@
           Para mama
           <input
             id="saleShareMama"
-            type="number"
+            type="text"
+            inputmode="decimal"
             min="0"
             step="1"
             placeholder="50% automatico"
@@ -420,7 +428,8 @@
         Monto *
         <input
           id="purchaseAmount"
-          type="number"
+          type="text"
+          inputmode="decimal"
           min="0"
           step="1"
           placeholder="0"
@@ -445,7 +454,7 @@
 
   </dialog>
 
-  <script src="app.js?v=10"></script>
+  <script src="app.js?v=11"></script>
 
 </body>
 </html>
